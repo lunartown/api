@@ -1,0 +1,4804 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Gotar Rent Car API",
+    "version": "1.0.0",
+    "x-logo": {
+      "url": "./logo-carmore.svg",
+      "altText": "GOTAR Logo",
+      "width": "40px",
+      "height": "40px"
+    },
+    "description": "# GOTAR API Implementation Guide\n\n**[Korean Version](./openapi.json)**\n\n## Overview\n\nGOTAR (Global OTA RequestAndResponse) is a unified API specification defined for seamless integration between global OTA rental car services and Carmore.\n\nThis guide is designed to help global OTA companies wishing to partner with Carmore implement standardized APIs.\n\n## Architecture Overview\n\nGOTAR operates with the following 3-tier structure:\n\n```\nSource API (Partner) ←→ Wrapper API (Partner) ←→ Carmore API (common) ←→ Carmore\n               │                │                   │\n           VendorAPI       GOTAR Specification      Carmore API\n           Request &       Request &            Request &\n           Response        Response             Response\n```\n\n- **Source API**: Partner's existing rental car reservation system\n- **Wrapper API**: Standardized API implemented according to GOTAR specification (Partner implementation target)\n- **Carmore API**: Integration interface with Carmore platform\n\nPartners must implement by converting their existing source API to a wrapper API that conforms to GOTAR specification.\n\n\n## API Flow Diagram\n\nThe following diagram shows the complete process flow from vehicle search to reservation:\n\n![Vehicle Booking Flow](./vehicle-booking-flow.svg)\n\n## Implementation Guidelines\n\n### 1. Field Definition and Data Processing Principles\n- **All Fields Must Be Included**: All fields in the defined interface must be included in the API response, and fields must not be missing or `undefined`\n- **Explicit null Handling**: When there is no data, do not omit the field, but must explicitly send it as `null` value\n- **Essential Data Guarantee**: Fields that are essential for business logic must send meansful actual values, not default values\n- **Consistent Response Format**: All API responses must strictly comply with the defined interface specification\n\n### 2. Data Mapping Strategy\n- Convert existing system data to match GOTAR schema\n- Implement sufficient mapping logic to ensure no data is missing\n- Implement after confirming essential information required by Carmore\n\n### 3. Error Handling and Logging\n- Provide clear error codes and messages\n- Implement sufficient logging for debugging\n- Include traceable information for problem resolution on Carmore side\n\n## Key Domain Models\n\n### Core Entities\n\n#### 🚗 Vehicle Related\n- **Car**: Car Model definition - Information about actual rental car models sold (e.g., K5, Sonata, BMW X3, etc.)\n- **Vehicle**: Bookable rental car products - Complete product information including Car info + price, insurance, company, reservation conditions, etc.\n\n#### 🏢 Company Related\n- **Vendor**: Rental car brand (Budget, Avis, Hertz and other company brands)\n- **Shop**: External API branch information - Physical location where vehicles are actually rented/returned\n- **Affiliate**: Carmore internal company management - Internal data processed to efficiently manage Shop information in Carmore system\n\n#### 📋 Reservation Related\n- **Order**: External API reservation information - Actual reservation/order content created from external rental car API\n- **Reservation**: Carmore internal reservation management - Reservation data organized from Carmore operational perspective based on Order information\n\n## Required Implementation APIs\n\nPartners must implement APIs in the following 5 categories:\n\n### 1. Vehicle APIs (Vehicle Related)\n- **Vehicle List Search**: `POST /vehicles`\n- **Vehicle Detail Search**: `POST /vehicles/:id`\n\n### 2. Order APIs (Order Related)\n- **Reservation Creation**: `POST /orders`\n- **Reservation Detail Search**: `GET /orders/:id`\n- **Reservation Cancellation**: `DELETE /orders/:id`\n\n### 3. Affiliates APIs (Company Management)\n- **Company List Search**: `POST /affiliates`\n- **Company Single Search**: `POST /affiliates/:id`\n\n### 4. Cars APIs (Car Model Management)\n- **Car Model List Search**: `POST /cars`\n- **Car Model Single Search**: `POST /cars/:id`\n\n### 5. Reservations APIs (Reservation Management)\n- **Reservation List Search**: `POST /reservations`\n\n## Reservation Processing Methods\n\nGOTAR supports two reservation processing methods:\n\n### Synchronous Method\nA method that processes reservation requests in real-time and immediately returns results.\n\n### Asynchronous Method\n\nAsynchronous method is used when immediate reservation confirmation is difficult, and proceeds with a 3-step process.\n\n#### Step 1: Send Reservation Request\n- When customer's pre-reservation is completed in Carmore API, reservation request is sent to partner's global API\n- Request data uses the existing synchronous method `POST /orders` with the same `OrderCreateRequest` format\n\n#### Step 2: Reservation Request Receipt Response\nWhen partners receive reservation requests, they must process as follows:\n\n**Request Validity Verification**\n- Validate the received reservation data\n- Check inventory, date validity, customer information, etc.\n\n**Send Immediate Response**\n- Instead of existing `OrderCreateResponse`, **Asynchronous Reservation Request Receipt Response** is sent\n- **Required Information:**\n    - for reservation processing tracking `trackingId` (must be included regardless of success/failure)\n    - When request acceptance succeeds: `200 OK` + `trackingId`\n    - When request acceptance fails: appropriate HTTP error code + error message + `trackingId`\n\n#### Step 3: Send Reservation Approval Result\nWhen partners complete actual reservation processing (regardless of success/failure) must send results to Carmore API.\n\n**Reservation Approval API Endpoint:**\n- Production: `POST https://common-api.carmore.kr/global/reservations/approval`\n- Development: `POST https://dev-common-api.carmore.kr/global/reservations/approval`\n\n**Transmission Data (Request Body):**\n\n*When reservation succeeds:*\n```json\n{\n  \"isSuccess\": true,\n  \"reservationNumber\": \"KL123123\",\n  \"globalApiOrderId\": \"AOB12COX\",\n  \"confirmationId\": \"AOB12COX\",\n  \"isConfirmed\": true,\n  \"confirmInHours\": 0,\n  \"orderCreateTrackingId\": \"UUID_VALUE\",\n  \"withOutPayment\": false\n}\n```\n\n*When reservation fails:*\n```json\n{\n  \"isSuccess\": false,\n  \"reservationNumber\": \"KL123123\",\n  \"globalApiOrderId\": \"\",\n  \"confirmationId\": \"\",\n  \"isConfirmed\": false,\n  \"confirmInHours\": 0,\n  \"orderCreateTrackingId\": \"UUID_VALUE\",\n  \"withOutPayment\": false\n}\n```\n\n**Main Field Descriptions:**\n- `orderCreateTrackingId`: Same value as trackingId issued in Step 2\n- `reservationNumber`: reservation number issued by Carmore\n- `globalApiOrderId`: reservation ID created by partner (only when successful)\n- `confirmationId`: reservation confirmation ID (only when successful)\n- `withOutPayment`: whether reservation proceeds without payment\n",
+    "contact": {
+      "name": "API Support",
+      "email": "support@gotar-rentcar.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.gotar-rentcar.com/v1",
+      "description": "Production server"
+    },
+    {
+      "url": "https://staging-api.gotar-rentcar.com/v1",
+      "description": "Staging server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Vehicles",
+      "description": "Vehicle search and Search APIs - Search available vehicles based on location and time, and retrieve detailed information."
+    },
+    {
+      "name": "Orders",
+      "description": "Reservation creation and management APIs - Create, view, and cancel vehicle reservations."
+    },
+    {
+      "name": "Affiliates",
+      "description": "Affiliate information APIs - Retrieve registered affiliate list and detailed information."
+    },
+    {
+      "name": "Cars",
+      "description": "Car model information APIs - Retrieve vehicle models and brand information."
+    },
+    {
+      "name": "Shops",
+      "description": "Shop information APIs - Retrieve rental and return location information."
+    }
+  ],
+  "components": {
+    "schemas": {
+      "AddOn": {
+        "description": "Vehicle add-on service information",
+        "properties": {
+          "chargeType": {
+            "description": "Add-on service price calculation method\n<br>\n- PER_HOUR: Calculate by reservation hours per add-on service. ((reservationHour * count) * price)\n- PER_COUNT: Calculate per add-on service. (count * price)\n- PER_RESERVATION: Calculate per add-on service. (count * price), but this type can only be used when only 1 item can be reserved\n- PER_DAY: Calculate by reservation days per add-on service (1 day 1 hour counts as 2 days). ((day * count) * price)",
+            "enum": [
+              "PER_COUNT",
+              "PER_DAY",
+              "PER_HOUR",
+              "PER_RESERVATION"
+            ],
+            "title": "chargeType",
+            "type": "string"
+          },
+          "description": {
+            "description": "Description of the add-on service",
+            "example": "유아대상의 카시트입니다.",
+            "title": "description",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique Identifier of the AddOn\n<br>\n- Available: Vehicle's _id + unique value or distinguishable name for the add-on service",
+            "example": "",
+            "title": "id",
+            "type": "string"
+          },
+          "isNeedConfirm": {
+            "description": "When this add-on service is requested, affiliate confirmation is required\n<br>\n- true: Add-on service requiring affiliate confirmation\n- false: When the value cannot be confirmed or confirmation is not required (Default value)",
+            "title": "isNeedConfirm",
+            "type": "boolean"
+          },
+          "isRequired": {
+            "description": "Whether add-on service application is mandatory\n<br>\n- true: When this add-on service must be applied to the reservation\n- false: When it is not a mandatory add-on service (Default value)",
+            "title": "isRequired",
+            "type": "boolean"
+          },
+          "maxAvailableCountPerReservation": {
+            "description": "Maximum orderable quantity of add-on service\n<br>\nIf the API does not provide maximum orderable quantity Default: -1",
+            "title": "maxAvailableCountPerReservation",
+            "type": "integer"
+          },
+          "maximumSelectableOptionsCount": {
+            "description": "Maximum selectable count of add-on service options\n<br>\nCannot be greater than the number of selectable options",
+            "title": "maximumSelectableOptionsCount",
+            "type": "integer"
+          },
+          "minimumSelectableOptionsCount": {
+            "description": "Minimum required count of selectable add-on service options\n<br>\nIf selectable options exist, it must be greater than 0",
+            "title": "minimumSelectableOptionsCount",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Name of the add-on service",
+            "example": "유아용 카시트",
+            "title": "name",
+            "type": "string"
+          },
+          "paymentMode": {
+            "description": "Add-on service payment method\n<br>\n∙ 1: on-site payment<br>\n∙ 2: advance payment",
+            "title": "paymentMode",
+            "type": "number"
+          },
+          "price": {
+            "description": "Add-on service price information\n<br>\nAdd-on service prices must always be either 100% on-site payment or 100% advance payment",
+            "properties": {
+              "payOnArrivalPrice": {
+                "$ref": "#/components/schemas/Price",
+                "description": "on-site payment amount",
+                "title": "payOnArrivalPrice"
+              },
+              "prepaidPrice": {
+                "$ref": "#/components/schemas/Price",
+                "description": "advance payment amount",
+                "title": "prepaidPrice"
+              }
+            },
+            "required": [
+              "payOnArrivalPrice",
+              "prepaidPrice"
+            ],
+            "title": "price",
+            "type": "object"
+          },
+          "selectableOptions": {
+            "description": "Add-on service selectable options",
+            "items": {
+              "properties": {
+                "name": {
+                  "description": "Display name of add-on service selectable options",
+                  "title": "name",
+                  "type": "string"
+                },
+                "value": {
+                  "description": "Unique value of add-on service selectable options",
+                  "title": "value",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "value"
+              ],
+              "type": "object"
+            },
+            "title": "selectableOptions",
+            "type": "array"
+          },
+          "stockCount": {
+            "description": "Add-on service stock\n<br>\nIf the API does not provide stock Default: -1",
+            "title": "stockCount",
+            "type": "number"
+          }
+        },
+        "required": [
+          "chargeType",
+          "description",
+          "id",
+          "isNeedConfirm",
+          "isRequired",
+          "maxAvailableCountPerReservation",
+          "maximumSelectableOptionsCount",
+          "minimumSelectableOptionsCount",
+          "name",
+          "paymentMode",
+          "price",
+          "selectableOptions",
+          "stockCount"
+        ],
+        "title": "AddOn",
+        "type": "object"
+      },
+      "Affiliate": {
+        "description": "Affiliate information",
+        "example": {
+          "id": "BG_ABC_123",
+          "vendorId": "BG_001",
+          "name": "Budget Hawthorne Ca",
+          "contacts": [
+            "310-970-1792"
+          ],
+          "operationTimes": [
+            {
+              "day": "MON",
+              "open": "00:00",
+              "close": "22:00",
+              "closeNextDay": false
+            }
+          ],
+          "seasonalOperationTimes": [
+            {
+              "day": "MON",
+              "startDate": "2023-01-01",
+              "endDate": "2023-01-31",
+              "open": "00:00",
+              "close": "22:00",
+              "closeNextDay": false
+            }
+          ],
+          "operationBreakTimes": [
+            {
+              "day": "MON",
+              "start": "14:00",
+              "end": "15:00"
+            }
+          ],
+          "seasonalOperationBreakTimes": [
+            {
+              "day": "MON",
+              "startDate": "2023-01-01",
+              "endDate": "2023-01-31",
+              "start": "14:00",
+              "end": "15:00"
+            }
+          ],
+          "licensePolicies": [
+            {
+              "foreigner": true,
+              "requiredLicenses": [
+                "국제운전면허증",
+                "거주지의 실물 운전 면허증"
+              ],
+              "description": "국제운전면허증(IDP)은 운전면허증의 번역본입니다. 따라서 반드시 운전면허증 원본을 지참하셔야 합니다."
+            }
+          ],
+          "location": {
+            "name": "LOS ANGELES INTL AIRPORT",
+            "address": "",
+            "streetAddress": "9000 AIRPORT BOULEVARD",
+            "positionType": -1,
+            "terminalCode": "T1",
+            "wayOfArrival": "무료 셔틀버스 이용",
+            "isAirportShop": false,
+            "latitude": 127.001,
+            "longitude": 1.234
+          },
+          "identificationPolicies": [
+            {
+              "foreigner": false,
+              "requiredDocuments": [
+                "유효한 신분증 카드"
+              ]
+            }
+          ],
+          "shopGuide": "",
+          "pickupGuide": [
+            {
+              "title": "pickup information",
+              "content": "Exit baggage claim and follow the sign to 'Ground Transportation' and wait at the shuttle bus pick up area."
+            }
+          ],
+          "returnGuide": [
+            {
+              "title": "return information",
+              "content": "Return the vehicle to the designated parking area and drop off the keys at the counter."
+            }
+          ],
+          "cancellationPolicy": {
+            "freeCancellationHours": 0,
+            "freeCancellationHoursAfterReservation": 0,
+            "cancellationCharges": [
+              {
+                "beforeRentalWithinEnd": 0,
+                "beforeRentalWithinStart": 48,
+                "chargeMode": 2,
+                "chargeFixedAmount": {
+                  "currency": "USD",
+                  "amount": 166.85
+                },
+                "chargePercentage": 0.5,
+                "chargeDays": 1
+              }
+            ]
+          }
+        },
+        "properties": {
+          "cancellationPolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CancellationPolicy"
+              },
+              {
+                "nullable": true
+              }
+            ],
+            "description": "Affiliate cancellation fee policy information\n<br>\nReturns cancellation fee policy information that may occur at the affiliate level if it exists",
+            "title": "cancellationPolicy"
+          },
+          "contacts": {
+            "description": "Contact information of affiliates or branches provided externally\n<br>\n- Available: N/A",
+            "items": {
+              "type": "string"
+            },
+            "title": "contacts",
+            "type": "array"
+          },
+          "id": {
+            "description": "Unique identifier of the shop\n- Any value starting with API Identifier + underscore like BG_",
+            "title": "id",
+            "type": "string"
+          },
+          "identificationPolicies": {
+            "description": "ID verification regulations for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/IdentificationPolicy"
+            },
+            "title": "identificationPolicies",
+            "type": "array"
+          },
+          "licensePolicies": {
+            "description": "License regulations for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/LicensePolicy"
+            },
+            "title": "licensePolicies",
+            "type": "array"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location",
+            "description": "Detailed location of affiliates or branches provided externally",
+            "title": "location"
+          },
+          "name": {
+            "description": "Name of company or branch provided externally\n<br>\n- Available: N/A",
+            "title": "name",
+            "type": "string"
+          },
+          "operationBreakTimes": {
+            "description": "Break time for companies or branches provided externally (defines idle time in between when production time is divided within a day)",
+            "items": {
+              "$ref": "#/components/schemas/OperationBreakTime"
+            },
+            "title": "operationBreakTimes",
+            "type": "array"
+          },
+          "operationTimes": {
+            "description": "Operating hours of affiliates or branches provided externally\n<br>\n- For APIs with variable operating hours, use \"the most frequently exposed operating hours\"",
+            "items": {
+              "$ref": "#/components/schemas/OperationTime"
+            },
+            "title": "operationTimes",
+            "type": "array"
+          },
+          "pickupGuide": {
+            "description": "Vehicle pickup method at affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/Guide"
+            },
+            "title": "pickupGuide",
+            "type": "array"
+          },
+          "returnGuide": {
+            "description": "Vehicle return method at affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/Guide"
+            },
+            "title": "returnGuide",
+            "type": "array"
+          },
+          "seasonalOperationBreakTimes": {
+            "description": "Break time during specific periods for companies or branches provided externally (defines idle time in between when production time is divided within a day)",
+            "items": {
+              "$ref": "#/components/schemas/SeasonalOperationBreakTime"
+            },
+            "title": "seasonalOperationBreakTimes",
+            "type": "array"
+          },
+          "seasonalOperationTimes": {
+            "description": "Operating hours during specific periods of affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/SeasonalOperationTime"
+            },
+            "title": "seasonalOperationTimes",
+            "type": "array"
+          },
+          "shopGuide": {
+            "description": "General announcements for affiliates or branches provided externally",
+            "title": "shopGuide",
+            "type": "string"
+          },
+          "vendorId": {
+            "description": "Unique identifier of the vendor\n<br>\n- Available: Any value starting with API Identifier + underscore like BG_",
+            "title": "vendorId",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cancellationPolicy",
+          "contacts",
+          "id",
+          "identificationPolicies",
+          "licensePolicies",
+          "location",
+          "name",
+          "operationBreakTimes",
+          "operationTimes",
+          "pickupGuide",
+          "returnGuide",
+          "seasonalOperationBreakTimes",
+          "seasonalOperationTimes",
+          "shopGuide",
+          "vendorId"
+        ],
+        "type": "object"
+      },
+      "AgePolicy": {
+        "description": "Age policy",
+        "properties": {
+          "freeAge": {
+            "description": "Minimum free age to rent a vehicle\n<br>\n*If above this age, no additional charges should be imposed based on age.<br>\n*If there are no additional charges by age, freeAge is usually minAge.",
+            "example": 23,
+            "title": "freeAge",
+            "type": "integer"
+          },
+          "maxAge": {
+            "description": "Maximum age to rent a vehicle",
+            "example": 80,
+            "title": "maxAge",
+            "type": "number"
+          },
+          "minAge": {
+            "description": "Minimum age to rent a vehicle",
+            "example": 21,
+            "title": "minAge",
+            "type": "number"
+          }
+        },
+        "required": [
+          "freeAge",
+          "maxAge",
+          "minAge"
+        ],
+        "title": "AgePolicy",
+        "type": "object"
+      },
+      "AvailableShopCombination": {
+        "description": "Interface containing IDs of company combinations where vehicles can be rented and returned",
+        "properties": {
+          "pickupShopId": {
+            "description": "ID of company available for rental",
+            "title": "pickupShopId",
+            "type": "string"
+          },
+          "returnShopId": {
+            "description": "ID of company available for return",
+            "title": "returnShopId",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pickupShopId",
+          "returnShopId"
+        ],
+        "title": "AvailableShopCombination",
+        "type": "object"
+      },
+      "CAR_GROUP": {
+        "description": "Car Model group used for vehicles\n- Compact(경형)=0, Subcompact(소형)=1, Mid-size(준중형)=2, Full-size(중형)=3, Large(대형)=4, RV=6, SUV=7, Wagon(웨건)=8, Sports(스포츠)=9, Convertible(컨버터블)=10, Pickup Truck(픽업트럭)=11, UNKNOWN=-1\n- If there is no value for Car Model class from external API, use -1",
+        "enum": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          -1
+        ],
+        "title": "CAR_GROUP",
+        "type": "number"
+      },
+      "CachedCar": {
+        "description": "Car Model information cached on server",
+        "example": {
+          "id": "BG_QA_12",
+          "sippCode": "CBAD",
+          "model": "K3",
+          "brand": "KIA",
+          "description": "K3에대한 설명입니다",
+          "primaryImage": "",
+          "images": [
+            "https://example.com/car1.jpg",
+            "https://example.com/car2.jpg"
+          ],
+          "seats": 4,
+          "doors": 4,
+          "baggageQuantity": 2
+        },
+        "properties": {
+          "baggageQuantity": {
+            "description": "Maximum baggage capacity for this Car Model",
+            "title": "baggageQuantity",
+            "type": "integer"
+          },
+          "brand": {
+            "description": "Car brand name",
+            "title": "brand",
+            "type": "string"
+          },
+          "description": {
+            "description": "Car Model detailed description",
+            "title": "description",
+            "type": "string"
+          },
+          "doors": {
+            "description": "Number of doors",
+            "title": "doors",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Unique identifier of the shop\n- Any value starting with API Identifier + underscore like BG_",
+            "title": "id",
+            "type": "string"
+          },
+          "images": {
+            "description": "All photos of the car model including main image of reserved vehicle",
+            "items": {
+              "type": "string"
+            },
+            "title": "images",
+            "type": "array"
+          },
+          "model": {
+            "description": "Car Model name",
+            "title": "model",
+            "type": "string"
+          },
+          "primaryImage": {
+            "description": "Main image of reserved vehicle",
+            "title": "primaryImage",
+            "type": "string"
+          },
+          "seats": {
+            "description": "Number of seats",
+            "title": "seats",
+            "type": "integer"
+          },
+          "sippCode": {
+            "description": "Four-character code identifying key features of rental car\n- Reference: https://car-hire-centre.co.uk/sipp-codes.html",
+            "title": "sippCode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "baggageQuantity",
+          "brand",
+          "description",
+          "doors",
+          "id",
+          "images",
+          "model",
+          "primaryImage",
+          "seats",
+          "sippCode"
+        ],
+        "title": "CachedCar",
+        "type": "object"
+      },
+      "CancellationPolicy": {
+        "description": "Cancellation policy for companies and vehicles",
+        "properties": {
+          "cancellationCharges": {
+            "description": "Cancellation fee amount and period information by section (interpreted as from beforeRentalWithinStart hours before rental start to beforeRentalWithinEnd hours before rental start)",
+            "items": {
+              "properties": {
+                "beforeRentalWithinEnd": {
+                  "description": "Section application start time (calculated backwards from rental start time, N hours before)",
+                  "title": "beforeRentalWithinEnd",
+                  "type": "number"
+                },
+                "beforeRentalWithinStart": {
+                  "description": "Section application end time (calculated backwards from rental start time, N hours before)",
+                  "title": "beforeRentalWithinStart",
+                  "type": "number"
+                },
+                "chargeDays": {
+                  "default": 0,
+                  "description": "Number of days for fee application (for chargeMode: 1, 0 = no days)\n- This means cancellation fee is calculated as rental amount / rental days * this value.",
+                  "title": "chargeDays",
+                  "type": "number"
+                },
+                "chargeFixedAmount": {
+                  "$ref": "#/components/schemas/Price",
+                  "description": "Fee application amount",
+                  "title": "chargeFixedAmount"
+                },
+                "chargeMode": {
+                  "description": "Fee application method\n<br>\n- 1: date/days<br>\n- 2: Percentage<br>\n- 3: Fixed amount<br>",
+                  "title": "chargeMode",
+                  "type": "integer"
+                },
+                "chargePercentage": {
+                  "default": 0,
+                  "description": "fee application percentage (chargeMode: 2 case, 0 = no percentage)\n- Value between 0 and 1, where 0.1 means 10% cancellation fee is charged.",
+                  "title": "chargePercentage",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "beforeRentalWithinEnd",
+                "beforeRentalWithinStart",
+                "chargeDays",
+                "chargeFixedAmount",
+                "chargeMode",
+                "chargePercentage"
+              ],
+              "type": "object"
+            },
+            "title": "cancellationCharges",
+            "type": "array"
+          },
+          "freeCancellationHours": {
+            "description": "Free cancellation available N hours before rental",
+            "title": "freeCancellationHours",
+            "type": "number"
+          },
+          "freeCancellationHoursAfterReservation": {
+            "description": "Free cancellation available within N hours of reservation",
+            "title": "freeCancellationHoursAfterReservation",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cancellationCharges",
+          "freeCancellationHours",
+          "freeCancellationHoursAfterReservation"
+        ],
+        "title": "CancellationPolicy",
+        "type": "object"
+      },
+      "Car": {
+        "description": "Car Model",
+        "example": {
+          "id": "BG_QA_12",
+          "sippCode": "CBAD",
+          "model": "K3",
+          "brand": "KIA",
+          "description": "K3에대한 설명입니다",
+          "images": {
+            "primary": "",
+            "images": [
+              "https://example.com/car1.jpg",
+              "https://example.com/car2.jpg"
+            ]
+          },
+          "seats": 4,
+          "doors": 4,
+          "baggageQuantity": 2,
+          "hasAirCondition": true,
+          "transmissionType": "A/T",
+          "isModelGuaranteed": true
+        },
+        "properties": {
+          "baggageQuantity": {
+            "description": "Maximum baggage capacity for this Car Model",
+            "example": 2,
+            "title": "baggageQuantity",
+            "type": "integer",
+            "nullable": true
+          },
+          "brand": {
+            "description": "Car brand name",
+            "example": "KIA",
+            "title": "brand",
+            "type": "string"
+          },
+          "description": {
+            "description": "Car Model detailed description",
+            "example": "K3에대한 설명입니다",
+            "title": "description",
+            "type": "string",
+            "nullable": true
+          },
+          "doors": {
+            "description": "Number of doors",
+            "title": "doors",
+            "type": "integer",
+            "nullable": true
+          },
+          "hasAirCondition": {
+            "description": "Air conditioning availability for reserved vehicle (omitted if not provided)",
+            "title": "hasAirCondition",
+            "type": "boolean",
+            "nullable": true
+          },
+          "id": {
+            "description": "Unique identifier of the Car\n- Available: Any value starting with API Identifier + underscore like BG_",
+            "title": "id",
+            "type": "string"
+          },
+          "images": {
+            "description": "Photo of reserved vehicle",
+            "properties": {
+              "images": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "nullable": true
+                  }
+                ],
+                "description": "All photos of the car model including main image of reserved vehicle",
+                "title": "images"
+              },
+              "primary": {
+                "description": "Main image of reserved vehicle",
+                "title": "primary",
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "images",
+              "primary"
+            ],
+            "title": "images",
+            "type": "object"
+          },
+          "isModelGuaranteed": {
+            "description": "Whether the Car Model of reserved vehicle is guaranteed\n- true : This Car Model is always guaranteed\n- false : Other car models may be assigned.",
+            "title": "isModelGuaranteed",
+            "type": "boolean"
+          },
+          "model": {
+            "description": "Car Model name",
+            "example": "K3",
+            "title": "model",
+            "type": "string"
+          },
+          "seats": {
+            "description": "Number of seats",
+            "title": "seats",
+            "type": "integer",
+            "nullable": true
+          },
+          "sippCode": {
+            "description": "Four-character code identifying key features of rental car\n- Reference: https://car-hire-centre.co.uk/sipp-codes.html",
+            "title": "sippCode",
+            "type": "string",
+            "nullable": true
+          },
+          "transmissionType": {
+            "description": "Transmission type of reserved vehicle model\n- A/T : automatic\n- M/T : manual",
+            "title": "transmissionType",
+            "type": "string"
+          }
+        },
+        "required": [
+          "baggageQuantity",
+          "brand",
+          "description",
+          "doors",
+          "hasAirCondition",
+          "id",
+          "images",
+          "isModelGuaranteed",
+          "model",
+          "seats",
+          "sippCode",
+          "transmissionType"
+        ],
+        "type": "object"
+      },
+      "ChargedTime": {
+        "description": "Production time when additional charges are imposed for companies or branches provided externally",
+        "properties": {
+          "close": {
+            "description": "Production end time when additional charges are imposed",
+            "title": "close",
+            "type": "string",
+            "format": "date-time"
+          },
+          "day": {
+            "description": "day of week",
+            "title": "day",
+            "type": "string"
+          },
+          "open": {
+            "description": "Production start time when additional charges are imposed",
+            "title": "open",
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "close",
+          "day",
+          "open"
+        ],
+        "title": "ChargedTime",
+        "type": "object"
+      },
+      "ChargedTimePrice": {
+        "description": "Additional charges imposed during production time for companies or branches provided externally",
+        "properties": {
+          "amount": {
+            "description": "Additional charges imposed",
+            "title": "amount",
+            "type": "number"
+          },
+          "currency": {
+            "description": "Additional charge currency",
+            "title": "currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "ChargedTimePrice",
+        "type": "object"
+      },
+      "CreditCard": {
+        "description": "Card information available during reservation and information about deposit to be imposed",
+        "properties": {
+          "availableCardVendor": {
+            "description": "Credit card type",
+            "items": {
+              "type": "string"
+            },
+            "title": "availableCardVendor",
+            "type": "array"
+          },
+          "creditCardProperty": {
+            "description": "Credit card type\n<br>\n- 1: chip card<br>\n- 2: convex card<br>\n- 3: embossed chip card<br>\n- 4: no special requirements",
+            "title": "creditCardProperty",
+            "type": "number"
+          },
+          "depositMax": {
+            "$ref": "#/components/schemas/Price",
+            "description": "Maximum deposit",
+            "title": "depositMax"
+          },
+          "depositMin": {
+            "$ref": "#/components/schemas/Price",
+            "description": "Minimum deposit",
+            "title": "depositMin"
+          },
+          "depositRemark": {
+            "description": "Informational text related to deposit",
+            "title": "depositRemark",
+            "type": "string"
+          },
+          "isForUpscaleCar": {
+            "description": "Whether deposit is required for luxury car rental",
+            "title": "isForUpscaleCar",
+            "type": "boolean"
+          },
+          "isNeedPinCode": {
+            "description": "Whether PIN code is required (when paying deposit)",
+            "title": "isNeedPinCode",
+            "type": "boolean"
+          },
+          "rentalRate": {
+            "default": 0,
+            "description": "Deposit percentage (% of rental cost, 0 = no percentage)",
+            "title": "rentalRate",
+            "type": "number"
+          },
+          "thawDaysMax": {
+            "description": "Maximum deposit return period (days)",
+            "title": "thawDaysMax",
+            "type": "number"
+          },
+          "thawDaysMin": {
+            "description": "Minimum deposit return period (days)",
+            "title": "thawDaysMin",
+            "type": "number"
+          }
+        },
+        "required": [
+          "availableCardVendor",
+          "creditCardProperty",
+          "depositMax",
+          "depositMin",
+          "depositRemark",
+          "isForUpscaleCar",
+          "isNeedPinCode",
+          "rentalRate",
+          "thawDaysMax",
+          "thawDaysMin"
+        ],
+        "title": "CreditCard",
+        "type": "object"
+      },
+      "Driver": {
+        "description": "driver information\n- When used as a single value, the driver and reservation holder are the same.\n- If used as an array value, the first value in the array is always \"main driver\"and is the same as the reservation holder.\n- Subsequent values are \"additional drivers\"and are Driver objects instead of the reservation holder.",
+        "properties": {
+          "email": {
+            "description": "Driver's email",
+            "title": "email",
+            "type": "string",
+            "format": "email"
+          },
+          "firstName": {
+            "description": "Driver name",
+            "title": "firstName",
+            "type": "string"
+          },
+          "gender": {
+            "description": "driverof gender\n- M : male\n- F : female\n- All others are undetermined values.",
+            "title": "gender",
+            "type": "string",
+            "nullable": true
+          },
+          "lastName": {
+            "description": "Driver's surname",
+            "title": "lastName",
+            "type": "string"
+          },
+          "phone": {
+            "description": "driverof international phone number included mobile phone number\n- Must use ITU-T recommendation E.164 number.",
+            "title": "phone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "firstName",
+          "gender",
+          "lastName",
+          "phone"
+        ],
+        "title": "Driver",
+        "type": "object"
+      },
+      "FreeExtraDriverInfo": {
+        "description": "Free additional driver information included in vehicle",
+        "properties": {
+          "isAvailableFreeExtraDriver": {
+            "description": "Whether free additional driver is available",
+            "title": "isAvailableFreeExtraDriver",
+            "type": "boolean"
+          },
+          "quantity": {
+            "default": 0,
+            "description": "Number of free additional drivers available",
+            "title": "quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "isAvailableFreeExtraDriver",
+          "quantity"
+        ],
+        "title": "FreeExtraDriverInfo",
+        "type": "object"
+      },
+      "Guide": {
+        "description": "Vehicle pickup or return method at companies or branches provided externally",
+        "properties": {
+          "content": {
+            "description": "Detailed information for vehicle pickup method at affiliates or branches provided externally",
+            "title": "content",
+            "type": "string"
+          },
+          "title": {
+            "description": "Title for vehicle pickup method at affiliates or branches provided externally",
+            "title": "title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "title"
+        ],
+        "title": "Guide",
+        "type": "object"
+      },
+      "IdentificationPolicy": {
+        "description": "ID verification regulations for companies or branches provided externally",
+        "properties": {
+          "foreigner": {
+            "description": "Whether it is a foreigner regulation\n<br>\n- true (based on locals)\n- false (based on foreigners)",
+            "title": "foreigner",
+            "type": "boolean"
+          },
+          "requiredDocuments": {
+            "description": "ID and documents required for ID verification at companies or branches provided externally",
+            "items": {
+              "type": "string"
+            },
+            "title": "requiredDocuments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "foreigner",
+          "requiredDocuments"
+        ],
+        "title": "IdentificationPolicy",
+        "type": "object"
+      },
+      "Insurance": {
+        "description": "Insurance information included in vehicle",
+        "properties": {
+          "coverage": {
+            "description": "Included insurance information",
+            "items": {
+              "properties": {
+                "code": {
+                  "description": "Insurance code",
+                  "title": "code",
+                  "type": "string"
+                },
+                "subInsurances": {
+                  "description": "Detailed information of included insurance (fixed value is returned if not provided)",
+                  "items": {
+                    "properties": {
+                      "age": {
+                        "description": "Insurance applicable age",
+                        "title": "age",
+                        "type": "integer"
+                      },
+                      "coverageScope": {
+                        "description": "Insurance coverage description",
+                        "title": "coverageScope",
+                        "type": "string"
+                      },
+                      "depositMax": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Price"
+                          },
+                          {
+                            "nullable": true,
+                            "type": "object"
+                          }
+                        ],
+                        "description": "maximum deposit (omitted if not provided)",
+                        "title": "depositMax"
+                      },
+                      "depositMin": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Price"
+                          },
+                          {
+                            "nullable": true,
+                            "type": "object"
+                          }
+                        ],
+                        "description": "minimum deposit (omitted if not provided)",
+                        "title": "depositMin"
+                      },
+                      "excessMax": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Price"
+                          },
+                          {
+                            "nullable": true,
+                            "type": "object"
+                          }
+                        ],
+                        "description": "Maximum deductible (omitted if not provided)",
+                        "title": "excessMax"
+                      },
+                      "excessMin": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Price"
+                          },
+                          {
+                            "nullable": true,
+                            "type": "object"
+                          }
+                        ],
+                        "description": "Minimum deductible (omitted if not provided)",
+                        "title": "excessMin"
+                      },
+                      "hasDeposit": {
+                        "description": "Whether deposit required",
+                        "title": "hasDeposit",
+                        "type": "boolean"
+                      },
+                      "hasExcess": {
+                        "description": "Whether deductible required",
+                        "title": "hasExcess",
+                        "type": "boolean"
+                      },
+                      "isDepositIncludeTax": {
+                        "description": "Whether deposit includes tax",
+                        "title": "isDepositIncludeTax",
+                        "type": "boolean"
+                      },
+                      "isExcessIncludeTax": {
+                        "description": "Whether deductible includes tax",
+                        "title": "isExcessIncludeTax",
+                        "type": "boolean"
+                      },
+                      "payOnArrivalPrice": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Price"
+                          },
+                          {
+                            "nullable": true,
+                            "type": "object"
+                          }
+                        ],
+                        "description": "insuranceof on-site payment fee (omitted if not provided)\n- Insurance price is always included in vehicle fee (Vehicle.reservation.price)\n- Informational key to show insurance price",
+                        "title": "payOnArrivalPrice"
+                      },
+                      "prepaidPrice": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Price"
+                          },
+                          {
+                            "nullable": true,
+                            "type": "object"
+                          }
+                        ],
+                        "description": "insuranceof advance payment fee (omitted if not provided)\n- Insurance price is always included in vehicle fee (Vehicle.reservation.price)\n- Informational key to show insurance price",
+                        "title": "prepaidPrice"
+                      },
+                      "remark": {
+                        "description": "precautions",
+                        "title": "remark",
+                        "type": "string"
+                      },
+                      "requiredDrivingExperience": {
+                        "description": "Insurance applicable driving experience",
+                        "title": "requiredDrivingExperience",
+                        "type": "number"
+                      },
+                      "title": {
+                        "description": "Detailed insurance name",
+                        "title": "title",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "age",
+                      "coverageScope",
+                      "depositMax",
+                      "depositMin",
+                      "excessMax",
+                      "excessMin",
+                      "hasDeposit",
+                      "hasExcess",
+                      "isDepositIncludeTax",
+                      "isExcessIncludeTax",
+                      "payOnArrivalPrice",
+                      "prepaidPrice",
+                      "remark",
+                      "requiredDrivingExperience",
+                      "title"
+                    ],
+                    "type": "object"
+                  },
+                  "title": "subInsurances",
+                  "type": "array"
+                },
+                "title": {
+                  "description": "Insurance name",
+                  "title": "title",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "subInsurances",
+                "title"
+              ],
+              "type": "object"
+            },
+            "title": "coverage",
+            "type": "array"
+          },
+          "coveragePackage": {
+            "description": "Insurance package name (same as originalCoveragePackage value)",
+            "title": "coveragePackage",
+            "type": "string"
+          },
+          "originCoveragePackage": {
+            "description": "Insurance package name",
+            "title": "originCoveragePackage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "coverage",
+          "coveragePackage",
+          "originCoveragePackage"
+        ],
+        "title": "Insurance",
+        "type": "object"
+      },
+      "LicensePolicy": {
+        "description": "Interface representing information about driver's license requirements and regulations",
+        "properties": {
+          "description": {
+            "description": "License regulation description",
+            "title": "description",
+            "type": "string"
+          },
+          "foreigner": {
+            "description": "Whether it is a foreigner regulation\n- true (based on locals)\n- false (based on foreigners)",
+            "title": "foreigner",
+            "type": "boolean"
+          },
+          "requiredLicenses": {
+            "description": "Required license and documents",
+            "items": {
+              "type": "string"
+            },
+            "title": "requiredLicenses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "description",
+          "foreigner",
+          "requiredLicenses"
+        ],
+        "title": "LicensePolicy",
+        "type": "object"
+      },
+      "Location": {
+        "description": "Detailed location of affiliates or branches provided externally",
+        "properties": {
+          "address": {
+            "description": "Location address of company or branch provided externally\n<br>\nIf the address is divided into upper/lower addresses in the API, this corresponds to the upper address. If not distinguished in the API, all should be put in streetAddress, the smallest unit.",
+            "title": "address",
+            "type": "string"
+          },
+          "isAirportShop": {
+            "description": "Whether the company or branch provided externally is located at an airport\n<br>\nIf the API does not provide airport location information, use false",
+            "title": "isAirportShop",
+            "type": "boolean"
+          },
+          "latitude": {
+            "description": "Latitude of company or branch provided externally",
+            "title": "latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "description": "Longitude of company or branch provided externally",
+            "title": "longitude",
+            "type": "number"
+          },
+          "name": {
+            "description": "Location name of company or branch provided externally",
+            "title": "name",
+            "type": "string"
+          },
+          "positionType": {
+            "description": "Area where company or branch provided externally is located\n<br>\n- 1 : airport terminal\n- 2 : inside airport\n- 3 : outside airport\n- 4 : domestic terminal\n- 5 : international terminal\n- -1 : unknown",
+            "title": "positionType",
+            "type": "integer"
+          },
+          "streetAddress": {
+            "description": "Detailed location address of company or branch provided externally\n<br>\nIf the address is divided into upper/lower addresses in the API, this corresponds to the lower address.",
+            "title": "streetAddress",
+            "type": "string"
+          },
+          "terminalCode": {
+            "description": "Terminal code of company or branch provided externally (empty string = no terminal)\n- If the company is located in a terminal, the corresponding airport terminal code is entered",
+            "title": "terminalCode",
+            "type": "string"
+          },
+          "wayOfArrival": {
+            "description": "Method to reach company or branch provided externally",
+            "title": "wayOfArrival",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "isAirportShop",
+          "latitude",
+          "longitude",
+          "name",
+          "positionType",
+          "streetAddress",
+          "terminalCode",
+          "wayOfArrival"
+        ],
+        "title": "Location",
+        "type": "object"
+      },
+      "OneWayRental": {
+        "description": "One-way reservation additional amount information\n<br>\nAdditional amount should always be returned as included in Vehicle.price, not calculated separately.",
+        "properties": {
+          "paymentOnArrival": {
+            "$ref": "#/components/schemas/Price",
+            "description": "One-way on-site payment amount (amount included in Vehicle.price.payOnArrivalPrice)",
+            "title": "paymentOnArrival"
+          },
+          "paymentOnDeparture": {
+            "$ref": "#/components/schemas/Price",
+            "description": "One-way advance payment amount (amount included in Vehicle.price.payablePrice)",
+            "title": "paymentOnDeparture"
+          }
+        },
+        "required": [
+          "paymentOnArrival",
+          "paymentOnDeparture"
+        ],
+        "title": "OneWayRental",
+        "type": "object"
+      },
+      "OperationBreakTime": {
+        "description": "Break time for companies or branches provided externally (defines idle time in between when production time is divided within a day)",
+        "example": {
+          "day": "MON",
+          "start": "14:00",
+          "end": "15:00"
+        },
+        "properties": {
+          "day": {
+            "description": "day of week",
+            "title": "day",
+            "type": "string"
+          },
+          "end": {
+            "description": "Break time end time",
+            "title": "end",
+            "type": "string",
+            "format": "date-time"
+          },
+          "start": {
+            "description": "Break time start time",
+            "title": "start",
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "day",
+          "end",
+          "start"
+        ],
+        "title": "OperationBreakTime",
+        "type": "object"
+      },
+      "OperationTime": {
+        "description": "company Production time",
+        "example": {
+          "day": "MON",
+          "open": "00:00",
+          "close": "22:00",
+          "closeNextDay": false
+        },
+        "properties": {
+          "close": {
+            "description": "Production end time\nIf both production start time and end time are 00:00 and closeNextDay is false, it is a holiday.",
+            "title": "close",
+            "type": "string",
+            "format": "date-time"
+          },
+          "closeNextDay": {
+            "description": "Case of closing the next day\n- When day is MON and true, it means opening on Monday and closing on Tuesday.\n- When day is MON and false, it means opening on Monday and closing on Monday.",
+            "title": "closeNextDay",
+            "type": "boolean"
+          },
+          "day": {
+            "description": "day of week",
+            "title": "day",
+            "type": "string"
+          },
+          "open": {
+            "description": "Production start time\n- If both production start time and end time are 00:00 and closeNextDay is false, it is a holiday.",
+            "title": "open",
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "close",
+          "closeNextDay",
+          "day",
+          "open"
+        ],
+        "title": "OperationTime",
+        "type": "object"
+      },
+      "Order": {
+        "description": "Order information",
+        "example": {
+          "car": {
+            "_id": "BG_QA_12",
+            "sippCode": "CBAD",
+            "model": "K3",
+            "brand": "KIA",
+            "description": "K3에대한 설명입니다",
+            "images": {
+              "primary": "",
+              "images": [
+                "https://example.com/car1.jpg",
+                "https://example.com/car2.jpg"
+              ]
+            },
+            "seats": 4,
+            "doors": 4,
+            "baggageQuantity": 2,
+            "hasAirCondition": true,
+            "transmissionType": "A/T",
+            "isModelGuaranteed": true,
+            "carGroupTypeId": -1,
+            "fuelPolicy": "FULL_TO_FULL",
+            "insurance": {
+              "coverage": [
+                {
+                  "title": "부가적인 제3자 책임보험",
+                  "code": "ALI",
+                  "subInsurances": [
+                    {
+                      "title": "부가적인 제3자 책임보험",
+                      "depositMin": {
+                        "currency": "USD",
+                        "amount": 166.85
+                      },
+                      "depositMax": {
+                        "currency": "USD",
+                        "amount": 166.85
+                      },
+                      "excessMin": {
+                        "currency": "USD",
+                        "amount": 166.85
+                      },
+                      "excessMax": {
+                        "currency": "USD",
+                        "amount": 166.85
+                      },
+                      "hasExcess": true,
+                      "hasDeposit": true,
+                      "coverageScope": "LIABILITY"
+                    }
+                  ]
+                }
+              ],
+              "originCoveragePackage": "BASIC",
+              "coveragePackage": "BASIC"
+            },
+            "minimumAge": 21,
+            "freeAge": 23,
+            "maxAge": 80,
+            "requiredDrivingExperience": 0,
+            "creditCard": [
+              {
+                "availableCardVendor": [
+                  "China UnionPay",
+                  "VISA",
+                  "MasterCard",
+                  "Diners",
+                  "AMEX"
+                ],
+                "rentalRate": 100,
+                "depositMin": {
+                  "currency": "USD",
+                  "amount": 166.85
+                },
+                "depositMax": {
+                  "currency": "USD",
+                  "amount": 166.85
+                },
+                "depositRemark": "보증금에대한 추가적인 설명",
+                "thawDaysMin": 30,
+                "thawDaysMax": 60,
+                "isNeedPinCode": false,
+                "isForUpscaleCar": true,
+                "creditCardProperty": 2
+              }
+            ],
+            "isDistanceUnlimited": true,
+            "distanceLimitType": "RENTAL",
+            "distanceLimit": "150(Mile)"
+          },
+          "shop": {
+            "_id": "BG_ABC_123",
+            "_vendorId": "BG_001",
+            "name": "Budget Hawthorne Ca",
+            "contacts": [
+              "310-970-1792"
+            ],
+            "operationTimes": [
+              {
+                "day": "MON",
+                "open": "00:00",
+                "close": "22:00",
+                "closeNextDay": false
+              }
+            ],
+            "seasonalOperationTimes": [
+              {
+                "day": "MON",
+                "startDate": "2023-01-01",
+                "endDate": "2023-01-31",
+                "open": "00:00",
+                "close": "22:00",
+                "closeNextDay": false
+              }
+            ],
+            "operationBreakTimes": [
+              {
+                "day": "MON",
+                "start": "14:00",
+                "end": "15:00"
+              }
+            ],
+            "seasonalOperationBreakTimes": [
+              {
+                "day": "MON",
+                "startDate": "2023-01-01",
+                "endDate": "2023-01-31",
+                "start": "14:00",
+                "end": "15:00"
+              }
+            ],
+            "licensePolicies": [
+              {
+                "foreigner": true,
+                "requiredLicenses": [
+                  "국제운전면허증",
+                  "거주지의 실물 운전 면허증"
+                ],
+                "description": "국제운전면허증(IDP)은 운전면허증의 번역본입니다. 따라서 반드시 운전면허증 원본을 지참하셔야 합니다."
+              }
+            ],
+            "location": {
+              "name": "LOS ANGELES INTL AIRPORT",
+              "address": "",
+              "streetAddress": "9000 AIRPORT BOULEVARD",
+              "positionType": -1,
+              "terminalCode": "T1",
+              "wayOfArrival": "무료 셔틀버스 이용",
+              "isAirportShop": false,
+              "latitude": 127.001,
+              "longitude": 1.234
+            },
+            "identificationPolicies": [
+              {
+                "foreigner": false,
+                "requiredDocuments": [
+                  "유효한 신분증 카드"
+                ]
+              }
+            ],
+            "shopGuide": "",
+            "pickupGuide": [
+              {
+                "title": "pickup information",
+                "content": "Exit baggage claim and follow the sign to 'Ground Transportation' and wait at the shuttle bus pick up area."
+              }
+            ],
+            "returnGuide": [
+              {
+                "title": "return information",
+                "content": "Return the vehicle to the designated parking area and drop off the keys at the counter."
+              }
+            ],
+            "cancellationPolicy": {
+              "freeCancellationHours": 0,
+              "freeCancellationHoursAfterReservation": 0,
+              "cancellationCharges": [
+                {
+                  "beforeRentalWithinEnd": 0,
+                  "beforeRentalWithinStart": 48,
+                  "chargeMode": 2,
+                  "chargeFixedAmount": {
+                    "currency": "USD",
+                    "amount": 166.85
+                  },
+                  "chargePercentage": 0.5,
+                  "chargeDays": 1
+                }
+              ]
+            }
+          },
+          "status": "CANCELED",
+          "orderDateTime": "2022-11-22T00:00:00",
+          "pickUpDateTime": "2022-11-22T05:31:45",
+          "returnDateTime": "2022-11-24T05:31:45",
+          "countryCode": "US",
+          "orderId": "BLA1111",
+          "driver": [
+            {
+              "firstName": "오투",
+              "lastName": "팀",
+              "phone": "+8201012345678",
+              "email": "dev@teamo2.kr",
+              "gender": "M"
+            }
+          ],
+          "adult": 1,
+          "child": 1,
+          "infant": 1,
+          "confirmationNumber": "",
+          "isConfirmed": true,
+          "confirmInHours": 0,
+          "price": {
+            "totalPrice": {
+              "currency": "USD",
+              "amount": 166.85
+            },
+            "payablePrice": {
+              "currency": "USD",
+              "amount": 166.85
+            },
+            "payOnArrivalPrice": {
+              "currency": "USD",
+              "amount": 166.85
+            }
+          },
+          "reservationDescriptions": [
+            {
+              "title": "결제 포함 내용",
+              "description": "차량 대여료 및 기본 보험료가 포함되어 있습니다."
+            }
+          ],
+          "policies": [
+            {
+              "title": "대여 규정",
+              "description": "차량 대여 시 유효한 운전면허증과 신용카드가 필요합니다."
+            }
+          ],
+          "addOns": [
+            {
+              "id": "GPS_001",
+              "name": "GPS Navigation System",
+              "description": "Portable GPS navigation device with latest maps",
+              "chargeType": "PER_DAY",
+              "price": {
+                "prepaidPrice": {
+                  "currency": "USD",
+                  "amount": 15.99
+                },
+                "payOnArrivalPrice": {
+                  "currency": "USD",
+                  "amount": 0
+                }
+              },
+              "paymentMode": 2,
+              "isRequired": false,
+              "isNeedConfirm": false,
+              "stockCount": 10,
+              "maxAvailableCountPerReservation": 1,
+              "selectableOptions": [
+                {
+                  "name": "Standard GPS",
+                  "value": "GPS_STD"
+                },
+                {
+                  "name": "Premium GPS with Traffic",
+                  "value": "GPS_PREM"
+                }
+              ],
+              "minimumSelectableOptionsCount": 0,
+              "maximumSelectableOptionsCount": 2
+            }
+          ]
+        },
+        "properties": {
+          "addOns": {
+            "description": "Reserved vehicle add-on service information",
+            "items": {
+              "$ref": "#/components/schemas/AddOn"
+            },
+            "title": "addOns",
+            "type": "array"
+          },
+          "adult": {
+            "description": "Number of adults boarding the reserved vehicle\n- Total people boarding the vehicle is calculated as adult + child + infant.",
+            "title": "adult",
+            "type": "integer"
+          },
+          "car": {
+            "$ref": "#/components/schemas/OrderCar",
+            "description": "Reserved car model and vehicle information",
+            "title": "car"
+          },
+          "child": {
+            "description": "Number of children boarding the reserved vehicle\nTotal people boarding the vehicle is calculated as adult + child + infant.",
+            "title": "child",
+            "type": "integer"
+          },
+          "confirmInHours": {
+            "description": "Reservation confirmation maximum required time\n0 means immediate confirmation",
+            "title": "confirmInHours",
+            "type": "number"
+          },
+          "confirmationNumber": {
+            "description": "Confirmation number of reservation case received from external API\n- If reservation number and reservation confirmation number are the same, put reservation number in reservation confirmation number.",
+            "title": "confirmationNumber",
+            "type": "string"
+          },
+          "countryCode": {
+            "description": "Country code ISO 3166-1 alpha-2",
+            "title": "countryCode",
+            "type": "string"
+          },
+          "driver": {
+            "description": "Reservation holder (driver) information\n- First driver (Driver[0]) value is the same as reservation holder\n- All subsequent additional drivers are processed as additional drivers",
+            "items": {
+              "$ref": "#/components/schemas/Driver"
+            },
+            "title": "driver",
+            "type": "array"
+          },
+          "infant": {
+            "description": "Number of infants boarding the reserved vehicle\nTotal people boarding the vehicle is calculated as adult + child + infant.",
+            "title": "infant",
+            "type": "integer"
+          },
+          "isConfirmed": {
+            "description": "Whether the reservation case has been confirmed",
+            "title": "isConfirmed",
+            "type": "boolean"
+          },
+          "orderDateTime": {
+            "description": "Reservation Creation time (Asia/Seoul)\n- Format: YYYY-MM-DDTHH:mm:ss",
+            "title": "orderDateTime",
+            "type": "string",
+            "nullable": true
+          },
+          "orderId": {
+            "description": "Number of reservation case received from external API\n- If reservation number is confirmation number, put reservation number in reservation confirmation number.",
+            "title": "orderId",
+            "type": "string"
+          },
+          "pickUpDateTime": {
+            "description": "Local time based rental time\n- Format: YYYY-MM-DDTHH:mm:ss",
+            "title": "pickUpDateTime",
+            "type": "string",
+            "format": "date-time"
+          },
+          "policies": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Policy"
+                },
+                "type": "array"
+              },
+              {
+                "nullable": true
+              }
+            ],
+            "description": "reservation vehicleof rentalregulation information",
+            "title": "policies"
+          },
+          "price": {
+            "$ref": "#/components/schemas/OrderPrice",
+            "description": "reservation vehicleof price information",
+            "title": "price"
+          },
+          "reservationDescriptions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Policy"
+                },
+                "type": "array"
+              },
+              {
+                "nullable": true
+              }
+            ],
+            "description": "Free text descriptions for other information included in payment\nWhen external API provides descriptions for other information included in payment as Free Text\nMust be provided according to title, description specifications.",
+            "title": "reservationDescriptions"
+          },
+          "returnDateTime": {
+            "description": "Local return time\n- Format: YYYY-MM-DDTHH:mm:ss",
+            "title": "returnDateTime",
+            "type": "string",
+            "format": "date-time"
+          },
+          "shop": {
+            "$ref": "#/components/schemas/OrderShop",
+            "description": "reservation at the timeof company information",
+            "title": "shop"
+          },
+          "status": {
+            "description": "Reservation status\n- CONFIRMED : reservation confirmation\n- CANCELED : Reservation Cancellation\n- CONFIRMING : reservation confirmation in progress\n- UNKNOWN : unknown",
+            "title": "status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "addOns",
+          "adult",
+          "car",
+          "child",
+          "confirmInHours",
+          "confirmationNumber",
+          "countryCode",
+          "driver",
+          "infant",
+          "isConfirmed",
+          "orderDateTime",
+          "orderId",
+          "pickUpDateTime",
+          "policies",
+          "price",
+          "reservationDescriptions",
+          "returnDateTime",
+          "shop",
+          "status"
+        ],
+        "type": "object"
+      },
+      "OrderCar": {
+        "description": "reservation Car Model and vehicle information",
+        "properties": {
+          "_id": {
+            "description": "Unique identifier of the shop\n- Available: Any value starting with API Identifier + underscore like BG_",
+            "title": "_id",
+            "type": "string"
+          },
+          "baggageQuantity": {
+            "description": "Maximum baggage storage capacity of reserved vehicle",
+            "title": "baggageQuantity",
+            "type": "integer",
+            "nullable": true
+          },
+          "brand": {
+            "description": "reservation vehicleof Car brand name",
+            "title": "brand",
+            "type": "string"
+          },
+          "carGroupTypeId": {
+            "$ref": "#/components/schemas/CAR_GROUP",
+            "description": "reservation vehicleof Car Model class",
+            "title": "carGroupTypeId"
+          },
+          "creditCard": {
+            "description": "Card information available during reservation and information about deposit to be imposed",
+            "items": {
+              "$ref": "#/components/schemas/CreditCard"
+            },
+            "title": "creditCard",
+            "type": "array"
+          },
+          "description": {
+            "description": "reservation vehicleof detailed description",
+            "title": "description",
+            "type": "string",
+            "nullable": true
+          },
+          "distanceLimit": {
+            "description": "Available driving distance\n- This value exists only when isDistanceUnlimited value is false",
+            "title": "distanceLimit",
+            "type": "string"
+          },
+          "distanceLimitType": {
+            "description": "Driving distance limit basis\n- This value exists only when isDistanceUnlimited value is false\n- DAY: {distanceLimit} or less per day\n- RENTAL: {distanceLimit} or less during rental period\n- HOUR: {distanceLimit} or less per hour",
+            "title": "distanceLimitType",
+            "type": "string",
+            "nullable": true
+          },
+          "doors": {
+            "description": "reservation vehicleof Number of doors",
+            "title": "doors",
+            "type": "integer",
+            "nullable": true
+          },
+          "freeAge": {
+            "description": "Minimum free age to rent a vehicle\n- If above this age, no additional charges should be imposed based on age.\n- If there are no additional charges by age, freeAge is usually minAge.",
+            "title": "freeAge",
+            "type": "integer"
+          },
+          "fuelPolicy": {
+            "description": "Fuel policy of reserved vehicle\n- FULL_TO_FULL: Receive full tank and return full tank\n- SAME_TO_SAME: Return with same fuel level as received (selected when FULL guarantee is not available in FULL_TO_FULL)\n- FULL_TO_EMPTY: Receive full tank and return freely\n- FREE_TANK: Return freely (selected when FULL guarantee is not available in FULL_TO_EMPTY)\n- UNKNOWN: Unknown",
+            "title": "fuelPolicy",
+            "type": "string"
+          },
+          "hasAirCondition": {
+            "description": "Whether air conditioning is installed in reserved vehicle\nIf no value is provided externally, use null or false",
+            "title": "hasAirCondition",
+            "type": "boolean",
+            "nullable": true
+          },
+          "images": {
+            "description": "Photo of reserved vehicle\n- Object containing Car.primaryImage and Car.images keys",
+            "properties": {
+              "images": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "nullable": true
+                  }
+                ],
+                "description": "All photos of the car model including main image of reserved vehicle",
+                "title": "images"
+              },
+              "primary": {
+                "description": "Main image of reserved vehicle",
+                "title": "primary",
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "images",
+              "primary"
+            ],
+            "title": "images",
+            "type": "object"
+          },
+          "insurance": {
+            "$ref": "#/components/schemas/Insurance",
+            "description": "reservation vehicleof insurance policy",
+            "title": "insurance"
+          },
+          "isDistanceUnlimited": {
+            "description": "driving distance limit whether",
+            "title": "isDistanceUnlimited",
+            "type": "boolean"
+          },
+          "isModelGuaranteed": {
+            "description": "Whether the Car Model of reserved vehicle is guaranteed\n- true : This Car Model is always guaranteed\n- false : Other car models may be assigned.",
+            "title": "isModelGuaranteed",
+            "type": "boolean"
+          },
+          "maxAge": {
+            "description": "Maximum age to rent a vehicle",
+            "title": "maxAge",
+            "type": "number"
+          },
+          "minimumAge": {
+            "description": "Minimum age to rent a vehicle",
+            "title": "minimumAge",
+            "type": "number"
+          },
+          "model": {
+            "description": "reservation vehicleof Car Model name",
+            "title": "model",
+            "type": "string"
+          },
+          "requiredDrivingExperience": {
+            "description": "Minimum years of driving experience required to drive vehicle (0 = no limit)",
+            "title": "requiredDrivingExperience",
+            "type": "integer"
+          },
+          "seats": {
+            "description": "reservation vehicleof Number of seats",
+            "title": "seats",
+            "type": "integer",
+            "nullable": true
+          },
+          "sippCode": {
+            "description": "Four-character code identifying key features of rental car",
+            "title": "sippCode",
+            "type": "string",
+            "nullable": true
+          },
+          "transmissionType": {
+            "description": "Transmission type of reserved vehicle model\n- A/T : automatic\n- M/T : manual",
+            "title": "transmissionType",
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "baggageQuantity",
+          "brand",
+          "carGroupTypeId",
+          "creditCard",
+          "description",
+          "distanceLimit",
+          "distanceLimitType",
+          "doors",
+          "freeAge",
+          "fuelPolicy",
+          "hasAirCondition",
+          "images",
+          "insurance",
+          "isDistanceUnlimited",
+          "isModelGuaranteed",
+          "maxAge",
+          "minimumAge",
+          "model",
+          "requiredDrivingExperience",
+          "seats",
+          "sippCode",
+          "transmissionType"
+        ],
+        "title": "OrderCar",
+        "type": "object"
+      },
+      "OrderPrice": {
+        "description": "Order price information",
+        "properties": {
+          "payOnArrivalPrice": {
+            "$ref": "#/components/schemas/Price",
+            "description": "on-site payment amount",
+            "title": "payOnArrivalPrice"
+          },
+          "payablePrice": {
+            "$ref": "#/components/schemas/Price",
+            "description": "advance payment amount",
+            "title": "payablePrice"
+          },
+          "totalPrice": {
+            "$ref": "#/components/schemas/Price",
+            "description": "total payment amount\n- totalPrice = payablePrice(advance payment amount) + payOnArrivalPrice(on-site payment amount)",
+            "title": "totalPrice"
+          }
+        },
+        "required": [
+          "payOnArrivalPrice",
+          "payablePrice",
+          "totalPrice"
+        ],
+        "title": "OrderPrice",
+        "type": "object"
+      },
+      "OrderShop": {
+        "description": "Reservation company information\n- Excluding 'holidayNotice' | 'specialNotice' | 'chargedTimes' | 'chargedTimePrice' keys from Shop\n- Company information at the time of reservation with additional key (CancellationPolicy) for cancellation fee information at the time of reservation",
+        "properties": {
+          "_id": {
+            "description": "Unique identifier of the shop\n- Any value starting with API Identifier + underscore like BG_",
+            "title": "_id",
+            "type": "string"
+          },
+          "_vendorId": {
+            "description": "Unique identifier of the vendor\n- Any value starting with API Identifier + underscore like BG_",
+            "title": "_vendorId",
+            "type": "string"
+          },
+          "cancellationPolicy": {
+            "$ref": "#/components/schemas/CancellationPolicy",
+            "description": "Cancellation fee information imposed by company at the time of reservation\n- Must save reservation time information and send to reservation details",
+            "title": "cancellationPolicy"
+          },
+          "contacts": {
+            "description": "Contact information of affiliates or branches provided externally",
+            "items": {
+              "type": "string"
+            },
+            "title": "contacts",
+            "type": "array"
+          },
+          "identificationPolicies": {
+            "description": "ID verification regulations for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/IdentificationPolicy"
+            },
+            "title": "identificationPolicies",
+            "type": "array"
+          },
+          "licensePolicies": {
+            "description": "License regulations for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/LicensePolicy"
+            },
+            "title": "licensePolicies",
+            "type": "array"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location",
+            "description": "Detailed location of affiliates or branches provided externally",
+            "title": "location"
+          },
+          "name": {
+            "description": "Name of company or branch provided externally",
+            "example": "Budget Hawthorne Ca",
+            "title": "name",
+            "type": "string"
+          },
+          "operationBreakTimes": {
+            "description": "Break time for companies or branches provided externally\n- When production time is divided within a day, defines the idle time in between",
+            "items": {
+              "$ref": "#/components/schemas/OperationBreakTime"
+            },
+            "title": "operationBreakTimes",
+            "type": "array"
+          },
+          "operationTimes": {
+            "description": "Operating hours of affiliates or branches provided externally\n- For APIs with variable operating hours, use \"the most frequently exposed operating hours\"",
+            "items": {
+              "$ref": "#/components/schemas/OperationTime"
+            },
+            "title": "operationTimes",
+            "type": "array"
+          },
+          "pickupGuide": {
+            "description": "Vehicle pickup method at affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/Guide"
+            },
+            "title": "pickupGuide",
+            "type": "array"
+          },
+          "returnGuide": {
+            "description": "Vehicle return method at affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/Guide"
+            },
+            "title": "returnGuide",
+            "type": "array"
+          },
+          "returnShop": {
+            "$ref": "#/components/schemas/ReturnShop",
+            "description": "Return company information\nUses the same structure as Shop Interface. This object does not exist in vehicle list, and can only exist in vehicle details and reservation details.",
+            "title": "returnShop"
+          },
+          "seasonalOperationBreakTimes": {
+            "description": "Break time during specific periods for companies or branches provided externally\n- When production time is divided within a day, defines the idle time in between",
+            "items": {
+              "$ref": "#/components/schemas/SeasonalOperationBreakTime"
+            },
+            "title": "seasonalOperationBreakTimes",
+            "type": "array"
+          },
+          "seasonalOperationTimes": {
+            "description": "Operating hours during specific periods of affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/SeasonalOperationTime"
+            },
+            "title": "seasonalOperationTimes",
+            "type": "array"
+          },
+          "shopGuide": {
+            "description": "General announcements for affiliates or branches provided externally",
+            "title": "shopGuide",
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "_vendorId",
+          "cancellationPolicy",
+          "contacts",
+          "identificationPolicies",
+          "licensePolicies",
+          "location",
+          "name",
+          "operationBreakTimes",
+          "operationTimes",
+          "pickupGuide",
+          "returnGuide",
+          "returnShop",
+          "seasonalOperationBreakTimes",
+          "seasonalOperationTimes",
+          "shopGuide"
+        ],
+        "title": "OrderShop",
+        "type": "object"
+      },
+      "Policy": {
+        "description": "vehicleof rental regulation",
+        "properties": {
+          "description": {
+            "description": "Rental regulation content",
+            "title": "description",
+            "type": "string"
+          },
+          "title": {
+            "description": "Rental regulation title",
+            "title": "title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "title"
+        ],
+        "title": "Policy",
+        "type": "object"
+      },
+      "Price": {
+        "description": "price information",
+        "properties": {
+          "amount": {
+            "description": "amount",
+            "example": 166.85,
+            "title": "amount",
+            "type": "number"
+          },
+          "currency": {
+            "description": "currency(currency)",
+            "example": "USD",
+            "title": "currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "Price",
+        "type": "object"
+      },
+      "Reservation": {
+        "description": "Reservation information",
+        "example": {
+          "reservationNumber": "BG999999999",
+          "car": {
+            "id": "BG_QA_12",
+            "sippCode": "CBAD",
+            "model": "K3",
+            "brand": "KIA",
+            "description": "K3에대한 설명입니다",
+            "primaryImage": "",
+            "images": [
+              "https://example.com/car1.jpg",
+              "https://example.com/car2.jpg"
+            ],
+            "seats": 4,
+            "doors": 4,
+            "baggageQuantity": 2
+          },
+          "shop": {
+            "id": "BG_ABC_123",
+            "vendorId": "BG_001",
+            "name": "Budget Hawthorne Ca",
+            "contacts": [
+              "310-970-1792"
+            ],
+            "operationTimes": [
+              {
+                "day": "MON",
+                "open": "00:00",
+                "close": "22:00",
+                "closeNextDay": false
+              }
+            ],
+            "seasonalOperationTimes": [
+              {
+                "day": "MON",
+                "startDate": "2023-01-01",
+                "endDate": "2023-01-31",
+                "open": "00:00",
+                "close": "22:00",
+                "closeNextDay": false
+              }
+            ],
+            "operationBreakTimes": [
+              {
+                "day": "MON",
+                "start": "14:00",
+                "end": "15:00"
+              }
+            ],
+            "seasonalOperationBreakTimes": [
+              {
+                "day": "MON",
+                "startDate": "2023-01-01",
+                "endDate": "2023-01-31",
+                "start": "14:00",
+                "end": "15:00"
+              }
+            ],
+            "licensePolicies": [
+              {
+                "foreigner": true,
+                "requiredLicenses": [
+                  "국제운전면허증",
+                  "거주지의 실물 운전 면허증"
+                ],
+                "description": "국제운전면허증(IDP)은 운전면허증의 번역본입니다. 따라서 반드시 운전면허증 원본을 지참하셔야 합니다."
+              }
+            ],
+            "location": {
+              "name": "LOS ANGELES INTL AIRPORT",
+              "address": "",
+              "streetAddress": "9000 AIRPORT BOULEVARD",
+              "positionType": -1,
+              "terminalCode": "T1",
+              "wayOfArrival": "무료 셔틀버스 이용",
+              "isAirportShop": false,
+              "latitude": 127.001,
+              "longitude": 1.234
+            },
+            "identificationPolicies": [
+              {
+                "foreigner": false,
+                "requiredDocuments": [
+                  "유효한 신분증 카드"
+                ]
+              }
+            ],
+            "shopGuide": "",
+            "pickupGuide": [
+              {
+                "title": "pickup information",
+                "content": "Exit baggage claim and follow the sign to 'Ground Transportation' and wait at the shuttle bus pick up area."
+              }
+            ],
+            "returnGuide": [
+              {
+                "title": "return information",
+                "content": "Return the vehicle to the designated parking area and drop off the keys at the counter."
+              }
+            ],
+            "cancellationPolicy": null
+          },
+          "vehicle": {
+            "fuelPolicy": "FULL_TO_FULL",
+            "insurance": {
+              "coverage": [
+                {
+                  "title": "부가적인 제3자 책임보험",
+                  "code": "ALI",
+                  "subInsurances": [
+                    {
+                      "title": "부가적인 제3자 책임보험",
+                      "depositMin": {
+                        "currency": "USD",
+                        "amount": 166.85
+                      },
+                      "depositMax": {
+                        "currency": "USD",
+                        "amount": 166.85
+                      },
+                      "excessMin": {
+                        "currency": "USD",
+                        "amount": 166.85
+                      },
+                      "excessMax": {
+                        "currency": "USD",
+                        "amount": 166.85
+                      },
+                      "hasExcess": true,
+                      "hasDeposit": true,
+                      "coverageScope": "LIABILITY"
+                    }
+                  ]
+                }
+              ],
+              "originCoveragePackage": "BASIC",
+              "coveragePackage": "BASIC"
+            },
+            "minimumAge": 21,
+            "freeAge": 23,
+            "maximumAge": 80,
+            "requiredDrivingExperience": 0,
+            "creditCard": [
+              {
+                "availableCardVendor": [
+                  "China UnionPay",
+                  "VISA",
+                  "MasterCard",
+                  "Diners",
+                  "AMEX"
+                ],
+                "rentalRate": 100,
+                "depositMin": {
+                  "currency": "USD",
+                  "amount": 166.85
+                },
+                "depositMax": {
+                  "currency": "USD",
+                  "amount": 166.85
+                },
+                "depositRemark": "보증금에대한 추가적인 설명",
+                "thawDaysMin": 30,
+                "thawDaysMax": 60,
+                "isNeedPinCode": false,
+                "isForUpscaleCar": true,
+                "creditCardProperty": 2
+              }
+            ],
+            "isDistanceUnlimited": true,
+            "distanceLimitType": "RENTAL",
+            "distanceLimit": "150(Mile)",
+            "cancellationPolicy": {
+              "freeCancellationHours": 0,
+              "freeCancellationHoursAfterReservation": 0,
+              "cancellationCharges": [
+                {
+                  "beforeRentalWithinEnd": 0,
+                  "beforeRentalWithinStart": 48,
+                  "chargeMode": 2,
+                  "chargeFixedAmount": {
+                    "currency": "USD",
+                    "amount": 166.85
+                  },
+                  "chargePercentage": 0.5,
+                  "chargeDays": 1
+                }
+              ]
+            }
+          }
+        },
+        "properties": {
+          "car": {
+            "$ref": "#/components/schemas/CachedCar",
+            "description": "reservation vehicleof Car Model information",
+            "title": "car"
+          },
+          "reservationNumber": {
+            "description": "Reservation number (reservation number received from Carmore)\n- Available: Any value starting with API Identifier + underscore like BG_ (unique number for reservation saved in Carmore)",
+            "title": "reservationNumber",
+            "type": "string"
+          },
+          "shop": {
+            "$ref": "#/components/schemas/Shop",
+            "description": "reservation company information",
+            "title": "shop"
+          },
+          "vehicle": {
+            "$ref": "#/components/schemas/ReservationVehicle",
+            "description": "reservation vehicle information",
+            "title": "vehicle"
+          }
+        },
+        "required": [
+          "car",
+          "reservationNumber",
+          "shop",
+          "vehicle"
+        ],
+        "type": "object"
+      },
+      "ReservationVehicle": {
+        "description": "reservation vehicle information",
+        "properties": {
+          "cancellationPolicy": {
+            "$ref": "#/components/schemas/CancellationPolicy",
+            "description": "Cancellation fee information of reserved vehicle\n- Must save reservation time information and send it",
+            "title": "cancellationPolicy"
+          },
+          "creditCard": {
+            "description": "Card information available during reservation and information about deposit to be imposed",
+            "items": {
+              "$ref": "#/components/schemas/CreditCard"
+            },
+            "title": "creditCard",
+            "type": "array"
+          },
+          "distanceLimit": {
+            "description": "Available driving distance\n- This value exists only when isDistanceUnlimited value is false",
+            "title": "distanceLimit",
+            "type": "string"
+          },
+          "distanceLimitType": {
+            "description": "Driving distance limit basis\n- This value exists only when isDistanceUnlimited value is false\n- DAY: {distanceLimit} or less per day\n- RENTAL: {distanceLimit} or less during rental period\n- HOUR: {distanceLimit} or less per hour",
+            "title": "distanceLimitType",
+            "type": "string",
+            "nullable": true
+          },
+          "freeAge": {
+            "description": "reservation  vehicleof minimum free age\n- If above this age, no additional charges should be imposed based on age\n- If there are no additional charges by age, freeAge is usually minAge",
+            "title": "freeAge",
+            "type": "integer"
+          },
+          "fuelPolicy": {
+            "title": "fuelPolicy",
+            "type": "string"
+          },
+          "insurance": {
+            "$ref": "#/components/schemas/Insurance",
+            "description": "reservation  vehicleof insurance\n- For APIs with variable operating hours, use \"the most frequently exposed operating hours\"",
+            "title": "insurance"
+          },
+          "isDistanceUnlimited": {
+            "description": "driving distance limit whether",
+            "title": "isDistanceUnlimited",
+            "type": "boolean"
+          },
+          "maximumAge": {
+            "description": "reservation  vehicleof reservation available maximum age",
+            "title": "maximumAge",
+            "type": "number"
+          },
+          "minimumAge": {
+            "description": "reservation  vehicleof reservation available minimum age",
+            "title": "minimumAge",
+            "type": "number"
+          },
+          "requiredDrivingExperience": {
+            "description": "Minimum years of driving experience required to drive vehicle",
+            "title": "requiredDrivingExperience",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cancellationPolicy",
+          "creditCard",
+          "distanceLimit",
+          "distanceLimitType",
+          "freeAge",
+          "fuelPolicy",
+          "insurance",
+          "isDistanceUnlimited",
+          "maximumAge",
+          "minimumAge",
+          "requiredDrivingExperience"
+        ],
+        "title": "ReservationVehicle",
+        "type": "object"
+      },
+      "ReturnShop": {
+        "description": "Return company\n<br>\nvehicle list: not used\nvehicle detailed, reservation detailed: required/mandatory value",
+        "properties": {
+          "_id": {
+            "description": "Unique identifier of the shop\n- Any value starting with API Identifier + underscore like BG_",
+            "title": "_id",
+            "type": "string"
+          },
+          "_vendorId": {
+            "description": "Unique identifier of the vendor\n- Any value starting with API Identifier + underscore like BG_",
+            "title": "_vendorId",
+            "type": "string"
+          },
+          "cancellationPolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CancellationPolicy"
+              },
+              {
+                "nullable": true
+              }
+            ],
+            "description": "Affiliate cancellation fee policy information\nReturns cancellation fee policy information that may occur at the affiliate level if it exists",
+            "title": "cancellationPolicy"
+          },
+          "chargedTimePrice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChargedTimePrice"
+              },
+              {
+                "nullable": true
+              }
+            ],
+            "description": "Additional charges imposed during production time for companies or branches provided externally",
+            "title": "chargedTimePrice"
+          },
+          "chargedTimes": {
+            "description": "Production time when additional charges are imposed for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/ChargedTime"
+            },
+            "title": "chargedTimes",
+            "type": "array"
+          },
+          "contacts": {
+            "description": "Contact information of affiliates or branches provided externally",
+            "items": {
+              "type": "string"
+            },
+            "title": "contacts",
+            "type": "array"
+          },
+          "holidayNotice": {
+            "description": "Holiday related notice for companies or branches provided externally",
+            "title": "holidayNotice",
+            "type": "string"
+          },
+          "identificationPolicies": {
+            "description": "ID verification regulations for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/IdentificationPolicy"
+            },
+            "title": "identificationPolicies",
+            "type": "array"
+          },
+          "licensePolicies": {
+            "description": "License regulations for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/LicensePolicy"
+            },
+            "title": "licensePolicies",
+            "type": "array"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location",
+            "description": "Detailed location of affiliates or branches provided externally",
+            "title": "location"
+          },
+          "name": {
+            "description": "Name of company or branch provided externally",
+            "example": "Budget Hawthorne Ca",
+            "title": "name",
+            "type": "string"
+          },
+          "operationBreakTimes": {
+            "description": "Break time for companies or branches provided externally\n- When production time is divided within a day, defines the idle time in between",
+            "items": {
+              "$ref": "#/components/schemas/OperationBreakTime"
+            },
+            "title": "operationBreakTimes",
+            "type": "array"
+          },
+          "operationTimes": {
+            "description": "Operating hours of affiliates or branches provided externally\n- For APIs with variable operating hours, use \"the most frequently exposed operating hours\"",
+            "items": {
+              "$ref": "#/components/schemas/OperationTime"
+            },
+            "title": "operationTimes",
+            "type": "array"
+          },
+          "pickupGuide": {
+            "description": "Vehicle pickup method at affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/Guide"
+            },
+            "title": "pickupGuide",
+            "type": "array"
+          },
+          "returnGuide": {
+            "description": "Vehicle return method at affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/Guide"
+            },
+            "title": "returnGuide",
+            "type": "array"
+          },
+          "seasonalOperationBreakTimes": {
+            "description": "Break time during specific periods for companies or branches provided externally\n- When production time is divided within a day, defines the idle time in between",
+            "items": {
+              "$ref": "#/components/schemas/SeasonalOperationBreakTime"
+            },
+            "title": "seasonalOperationBreakTimes",
+            "type": "array"
+          },
+          "seasonalOperationTimes": {
+            "description": "Operating hours during specific periods of affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/SeasonalOperationTime"
+            },
+            "title": "seasonalOperationTimes",
+            "type": "array"
+          },
+          "shopGuide": {
+            "description": "General announcements for affiliates or branches provided externally",
+            "title": "shopGuide",
+            "type": "string"
+          },
+          "specialNotice": {
+            "description": "Notice for companies or branches provided externally",
+            "title": "specialNotice",
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "_vendorId",
+          "cancellationPolicy",
+          "chargedTimePrice",
+          "chargedTimes",
+          "contacts",
+          "holidayNotice",
+          "identificationPolicies",
+          "licensePolicies",
+          "location",
+          "name",
+          "operationBreakTimes",
+          "operationTimes",
+          "pickupGuide",
+          "returnGuide",
+          "seasonalOperationBreakTimes",
+          "seasonalOperationTimes",
+          "shopGuide",
+          "specialNotice"
+        ],
+        "title": "ReturnShop",
+        "type": "object"
+      },
+      "SeasonalOperationBreakTime": {
+        "description": "Break time during specific periods for companies or branches provided externally (defines idle time in between when production time is divided within a day)",
+        "properties": {
+          "day": {
+            "description": "day of week",
+            "title": "day",
+            "type": "string"
+          },
+          "end": {
+            "description": "Break time end time",
+            "title": "end",
+            "type": "string",
+            "format": "date-time"
+          },
+          "endDate": {
+            "description": "specific sectionof end day (YYYY-MM-DD)",
+            "title": "endDate",
+            "type": "string"
+          },
+          "start": {
+            "description": "Break time start time",
+            "title": "start",
+            "type": "string",
+            "format": "date-time"
+          },
+          "startDate": {
+            "description": "specific sectionof start day (YYYY-MM-DD)",
+            "title": "startDate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "end",
+          "endDate",
+          "start",
+          "startDate"
+        ],
+        "title": "SeasonalOperationBreakTime",
+        "type": "object"
+      },
+      "SeasonalOperationTime": {
+        "description": "Operating hours during specific periods of affiliates or branches provided externally",
+        "properties": {
+          "close": {
+            "description": "Production end time\n- If both production start time and end time are 00:00 and closeNextDay is false, it is a holiday.\n- Example: startDate: 2022-01-01, endDate: 2022-01-01, open: 00:00, close: 00:00 means 2022-01-01 is a holiday.",
+            "title": "close",
+            "type": "string",
+            "format": "date-time"
+          },
+          "closeNextDay": {
+            "description": "Case of closing the next day\n- When day is MON and true, it means opening on Monday and closing on Tuesday.\n- When day is MON and false, it means opening on Monday and closing on Monday.",
+            "title": "closeNextDay",
+            "type": "boolean"
+          },
+          "day": {
+            "description": "day of week",
+            "title": "day",
+            "type": "string"
+          },
+          "endDate": {
+            "description": "specific sectionof end day (YYYY-MM-DD)",
+            "title": "endDate",
+            "type": "string"
+          },
+          "open": {
+            "description": "Production start time\n- If both production start time and end time are 00:00 and closeNextDay is false, it is a holiday.\n- Example: startDate: 2022-01-01, endDate: 2022-01-01, open: 00:00, close: 00:00 means 2022-01-01 is a holiday.",
+            "title": "open",
+            "type": "string",
+            "format": "date-time"
+          },
+          "startDate": {
+            "description": "specific sectionof start day (YYYY-MM-DD)",
+            "title": "startDate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "close",
+          "closeNextDay",
+          "day",
+          "endDate",
+          "open",
+          "startDate"
+        ],
+        "title": "SeasonalOperationTime",
+        "type": "object"
+      },
+      "Shop": {
+        "description": "shop information",
+        "example": {
+          "_id": "BG_ABC_123",
+          "_vendorId": "BG_001",
+          "name": "Budget Hawthorne Ca",
+          "contacts": [
+            "310-970-1792"
+          ],
+          "operationTimes": [
+            {
+              "day": "MON",
+              "open": "00:00",
+              "close": "22:00",
+              "closeNextDay": false
+            }
+          ],
+          "seasonalOperationTimes": [
+            {
+              "day": "MON",
+              "startDate": "2023-01-01",
+              "endDate": "2023-01-31",
+              "open": "00:00",
+              "close": "22:00",
+              "closeNextDay": false
+            }
+          ],
+          "operationBreakTimes": [
+            {
+              "day": "MON",
+              "start": "14:00",
+              "end": "15:00"
+            }
+          ],
+          "seasonalOperationBreakTimes": [
+            {
+              "day": "MON",
+              "startDate": "2023-01-01",
+              "endDate": "2023-01-31",
+              "start": "14:00",
+              "end": "15:00"
+            }
+          ],
+          "licensePolicies": [
+            {
+              "foreigner": true,
+              "requiredLicenses": [
+                "국제운전면허증",
+                "거주지의 실물 운전 면허증"
+              ],
+              "description": "국제운전면허증(IDP)은 운전면허증의 번역본입니다. 따라서 반드시 운전면허증 원본을 지참하셔야 합니다."
+            }
+          ],
+          "location": {
+            "name": "LOS ANGELES INTL AIRPORT",
+            "address": "",
+            "streetAddress": "9000 AIRPORT BOULEVARD",
+            "positionType": -1,
+            "terminalCode": "T1",
+            "wayOfArrival": "무료 셔틀버스 이용",
+            "isAirportShop": false,
+            "latitude": 127.001,
+            "longitude": 1.234
+          },
+          "identificationPolicies": [
+            {
+              "foreigner": false,
+              "requiredDocuments": [
+                "유효한 신분증 카드"
+              ]
+            }
+          ],
+          "shopGuide": "",
+          "pickupGuide": [
+            {
+              "title": "pickup information",
+              "content": "Exit baggage claim and follow the sign to 'Ground Transportation' and wait at the shuttle bus pick up area."
+            }
+          ],
+          "returnGuide": [
+            {
+              "title": "return information",
+              "content": "Return the vehicle to the designated parking area and drop off the keys at the counter."
+            }
+          ],
+          "holidayNotice": "",
+          "specialNotice": "",
+          "chargedTimes": [
+            {
+              "day": "MON",
+              "open": "12:00",
+              "close": "14:00"
+            }
+          ],
+          "chargedTimePrice": {
+            "currency": "USD",
+            "amount": 10
+          },
+          "cancellationPolicy": null,
+          "returnShop": null
+        },
+        "properties": {
+          "_id": {
+            "description": "Unique identifier of the shop\n- Any value starting with API Identifier + underscore like BG_",
+            "title": "_id",
+            "type": "string"
+          },
+          "_vendorId": {
+            "description": "Unique identifier of the vendor\n- Any value starting with API Identifier + underscore like BG_",
+            "title": "_vendorId",
+            "type": "string"
+          },
+          "cancellationPolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CancellationPolicy"
+              },
+              {
+                "nullable": true
+              }
+            ],
+            "description": "Affiliate cancellation fee policy information\nReturns cancellation fee policy information that may occur at the affiliate level if it exists",
+            "title": "cancellationPolicy"
+          },
+          "chargedTimePrice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChargedTimePrice"
+              },
+              {
+                "nullable": true
+              }
+            ],
+            "description": "Additional charges imposed during production time for companies or branches provided externally",
+            "title": "chargedTimePrice"
+          },
+          "chargedTimes": {
+            "description": "Production time when additional charges are imposed for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/ChargedTime"
+            },
+            "title": "chargedTimes",
+            "type": "array"
+          },
+          "contacts": {
+            "description": "Contact information of affiliates or branches provided externally",
+            "items": {
+              "type": "string"
+            },
+            "title": "contacts",
+            "type": "array"
+          },
+          "holidayNotice": {
+            "description": "Holiday related notice for companies or branches provided externally",
+            "title": "holidayNotice",
+            "type": "string"
+          },
+          "identificationPolicies": {
+            "description": "ID verification regulations for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/IdentificationPolicy"
+            },
+            "title": "identificationPolicies",
+            "type": "array"
+          },
+          "licensePolicies": {
+            "description": "License regulations for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/LicensePolicy"
+            },
+            "title": "licensePolicies",
+            "type": "array"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location",
+            "description": "Detailed location of affiliates or branches provided externally",
+            "title": "location"
+          },
+          "name": {
+            "description": "Name of company or branch provided externally",
+            "example": "Budget Hawthorne Ca",
+            "title": "name",
+            "type": "string"
+          },
+          "operationBreakTimes": {
+            "description": "Break time for companies or branches provided externally\n- When production time is divided within a day, defines the idle time in between",
+            "items": {
+              "$ref": "#/components/schemas/OperationBreakTime"
+            },
+            "title": "operationBreakTimes",
+            "type": "array"
+          },
+          "operationTimes": {
+            "description": "Operating hours of affiliates or branches provided externally\n- For APIs with variable operating hours, use \"the most frequently exposed operating hours\"",
+            "items": {
+              "$ref": "#/components/schemas/OperationTime"
+            },
+            "title": "operationTimes",
+            "type": "array"
+          },
+          "pickupGuide": {
+            "description": "Vehicle pickup method at affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/Guide"
+            },
+            "title": "pickupGuide",
+            "type": "array"
+          },
+          "returnGuide": {
+            "description": "Vehicle return method at affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/Guide"
+            },
+            "title": "returnGuide",
+            "type": "array"
+          },
+          "returnShop": {
+            "$ref": "#/components/schemas/ReturnShop",
+            "description": "Return company information\nUses the same structure as Shop Interface. This object does not exist in vehicle list, and can only exist in vehicle details and reservation details.",
+            "title": "returnShop"
+          },
+          "seasonalOperationBreakTimes": {
+            "description": "Break time during specific periods for companies or branches provided externally\n- When production time is divided within a day, defines the idle time in between",
+            "items": {
+              "$ref": "#/components/schemas/SeasonalOperationBreakTime"
+            },
+            "title": "seasonalOperationBreakTimes",
+            "type": "array"
+          },
+          "seasonalOperationTimes": {
+            "description": "Operating hours during specific periods of affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/SeasonalOperationTime"
+            },
+            "title": "seasonalOperationTimes",
+            "type": "array"
+          },
+          "shopGuide": {
+            "description": "General announcements for affiliates or branches provided externally",
+            "title": "shopGuide",
+            "type": "string"
+          },
+          "specialNotice": {
+            "description": "Notice for companies or branches provided externally",
+            "title": "specialNotice",
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "_vendorId",
+          "cancellationPolicy",
+          "chargedTimePrice",
+          "chargedTimes",
+          "contacts",
+          "holidayNotice",
+          "identificationPolicies",
+          "licensePolicies",
+          "location",
+          "name",
+          "operationBreakTimes",
+          "operationTimes",
+          "pickupGuide",
+          "returnGuide",
+          "returnShop",
+          "seasonalOperationBreakTimes",
+          "seasonalOperationTimes",
+          "shopGuide",
+          "specialNotice"
+        ],
+        "type": "object"
+      },
+      "Vehicle": {
+        "description": "Vehicle information",
+        "example": {
+          "_id": "BG::BG_ASASBDSBASDBAS_BDSBASDBASB_SABADSBSB",
+          "_carId": "BG_ASASBDSBASDBAS_BDSBASDBASB_SABADSBSB",
+          "availableShopCombinations": [
+            {
+              "pickupShopId": "KL_12",
+              "returnShopId": "KL_13"
+            }
+          ],
+          "carGroupTypeId": -1,
+          "fuelPolicy": "FULL_TO_FULL",
+          "isReleasedInOneYear": true,
+          "maxYear": "2020",
+          "minYear": "2020",
+          "requiredDrivingExperience": 1,
+          "agePolicy": {
+            "minAge": 21,
+            "freeAge": 23,
+            "maxAge": 80
+          },
+          "insurance": {
+            "coverage": [
+              {
+                "title": "부가적인 제3자 책임보험",
+                "code": "ALI",
+                "subInsurances": [
+                  {
+                    "title": "부가적인 제3자 책임보험",
+                    "depositMin": {
+                      "currency": "USD",
+                      "amount": 166.85
+                    },
+                    "depositMax": {
+                      "currency": "USD",
+                      "amount": 166.85
+                    },
+                    "excessMin": {
+                      "currency": "USD",
+                      "amount": 166.85
+                    },
+                    "excessMax": {
+                      "currency": "USD",
+                      "amount": 166.85
+                    },
+                    "hasExcess": true,
+                    "hasDeposit": true,
+                    "coverageScope": "LIABILITY"
+                  }
+                ]
+              }
+            ],
+            "originCoveragePackage": "BASIC",
+            "coveragePackage": "BASIC"
+          },
+          "isDistanceUnlimited": true,
+          "distanceLimitType": "RENTAL",
+          "distanceLimit": "150(Mile)",
+          "reservation": {
+            "isImmediateConfirmation": true,
+            "confirmInHours": 24,
+            "price": {
+              "paymentMode": 1,
+              "totalPrice": {
+                "currency": "USD",
+                "amount": 166.85
+              },
+              "payablePrice": {
+                "currency": "USD",
+                "amount": 166.85
+              },
+              "payOnArrivalPrice": {
+                "currency": "USD",
+                "amount": 166.85
+              },
+              "retailPrice": {
+                "currency": "USD",
+                "amount": 166.85
+              }
+            },
+            "creditCard": [
+              {
+                "availableCardVendor": [
+                  "China UnionPay",
+                  "VISA",
+                  "MasterCard",
+                  "Diners",
+                  "AMEX"
+                ],
+                "rentalRate": 100,
+                "depositMin": {
+                  "currency": "USD",
+                  "amount": 166.85
+                },
+                "depositMax": {
+                  "currency": "USD",
+                  "amount": 166.85
+                },
+                "depositRemark": "보증금에대한 추가적인 설명",
+                "thawDaysMin": 30,
+                "thawDaysMax": 60,
+                "isNeedPinCode": false,
+                "isForUpscaleCar": true,
+                "creditCardProperty": 2
+              }
+            ],
+            "cancellationPolicy": {
+              "freeCancellationHours": 0,
+              "freeCancellationHoursAfterReservation": 0,
+              "cancellationCharges": [
+                {
+                  "beforeRentalWithinEnd": 0,
+                  "beforeRentalWithinStart": 48,
+                  "chargeMode": 2,
+                  "chargeFixedAmount": {
+                    "currency": "USD",
+                    "amount": 166.85
+                  },
+                  "chargePercentage": 0.5,
+                  "chargeDays": 1
+                }
+              ]
+            },
+            "hasDeposit": true,
+            "oneWayRental": {
+              "paymentOnDeparture": {
+                "currency": "USD",
+                "amount": 166.85
+              },
+              "paymentOnArrival": {
+                "currency": "USD",
+                "amount": 166.85
+              }
+            },
+            "reservationDescriptions": [
+              {
+                "title": "결제 포함 내용",
+                "description": "차량 대여료 및 기본 보험료가 포함되어 있습니다."
+              }
+            ]
+          },
+          "hasGPS": true,
+          "freeExtraDriverInfo": {
+            "isAvailableFreeExtraDriver": true,
+            "quantity": 1
+          },
+          "isNeedPort": false,
+          "isNeedFlightNo": false,
+          "policies": {
+            "title": "",
+            "description": ""
+          },
+          "addOns": [
+            {
+              "id": "",
+              "name": "유아용 카시트",
+              "description": "유아대상의 카시트입니다.",
+              "stockCount": 99,
+              "maxAvailableCountPerReservation": 3,
+              "selectableOptions": [
+                {
+                  "name": "영아용 카시트 (0-12개월)",
+                  "value": "INFANT_SEAT"
+                },
+                {
+                  "name": "유아용 카시트 (1-4세)",
+                  "value": "CHILD_SEAT"
+                }
+              ],
+              "maximumSelectableOptionsCount": 1,
+              "minimumSelectableOptionsCount": 1,
+              "paymentMode": 1,
+              "price": {
+                "prepaidPrice": {
+                  "currency": "USD",
+                  "amount": 166.85
+                },
+                "payOnArrivalPrice": {
+                  "currency": "USD",
+                  "amount": 166.85
+                }
+              },
+              "chargeType": "PER_DAY",
+              "isRequired": false,
+              "isNeedConfirm": false
+            }
+          ]
+        },
+        "properties": {
+          "_carId": {
+            "description": "Unique value for Car Model\n- Available: API Identifier like BG_ + combination value that can guarantee uniqueness for Car Model\n- All values are allowed for combination values that guarantee uniqueness.",
+            "example": "BG_ASASBDSBASDBAS_BDSBASDBASB_SABADSBSB",
+            "title": "_carId",
+            "type": "string"
+          },
+          "_id": {
+            "description": "Unique value for vehicle\n- Available: API Identifier like BG_ + combination value that can guarantee uniqueness for vehicle\n- All values are allowed for combination values that guarantee uniqueness.\n- API Identifier must be included with separator as prefix (BG::BG_~)",
+            "example": "BG::BG_ASASBDSBASDBAS_BDSBASDBASB_SABADSBSB",
+            "title": "_id",
+            "type": "string"
+          },
+          "addOns": {
+            "description": "Vehicle add-on service information provided externally",
+            "items": {
+              "$ref": "#/components/schemas/AddOn"
+            },
+            "title": "addOns",
+            "type": "array"
+          },
+          "agePolicy": {
+            "$ref": "#/components/schemas/AgePolicy",
+            "description": "vehicleof Age policy",
+            "title": "agePolicy"
+          },
+          "availableShopCombinations": {
+            "description": "Information about companies where this vehicle is available for reservation\n- Shows available structure from pickupShop -> ReturnShop\n- Example: pickupShopId: 1, returnShopId: 7 (1-7 format available)\n- If not one-way reservation, pickupShop and returnShop are always the same.",
+            "items": {
+              "$ref": "#/components/schemas/AvailableShopCombination"
+            },
+            "title": "availableShopCombinations",
+            "type": "array"
+          },
+          "carGroupTypeId": {
+            "anyOf": [
+              {
+                "enum": [
+                  -1,
+                  0,
+                  1,
+                  10,
+                  11,
+                  2,
+                  3,
+                  4,
+                  6,
+                  7,
+                  8,
+                  9
+                ],
+                "type": "number"
+              },
+              {
+                "nullable": true
+              }
+            ],
+            "description": "Integer ENUM for car class\n- Compact=0, Subcompact=1, Mid-size=2, Full-size=3, Large=4, RV=6, SUV=7, Wagon=8, Sports=9, Convertible=10, Pickup Truck=11, UNKNOWN=-1\n- If there is no value for Car Model class from external API, use -1",
+            "example": -1,
+            "title": "carGroupTypeId"
+          },
+          "distanceLimit": {
+            "description": "Available driving distance\n- This value exists only when isDistanceUnlimited value is false",
+            "title": "distanceLimit",
+            "type": "string"
+          },
+          "distanceLimitType": {
+            "description": "Driving distance limit basis\n- This value exists only when isDistanceUnlimited value is false\n- DAY: {distanceLimit} or less per day\n- RENTAL: {distanceLimit} or less during rental period\n- HOUR: {distanceLimit} or less per hour",
+            "title": "distanceLimitType",
+            "type": "string",
+            "nullable": true
+          },
+          "freeExtraDriverInfo": {
+            "$ref": "#/components/schemas/FreeExtraDriverInfo",
+            "description": "Free additional driver information",
+            "title": "freeExtraDriverInfo"
+          },
+          "fuelPolicy": {
+            "description": "Fuel policy\n- FULL_TO_FULL: Receive full tank and return full tank\n- SAME_TO_SAME: Return with same fuel level as received (selected when FULL guarantee is not available in FULL_TO_FULL)\n- FULL_TO_EMPTY: Receive full tank and return freely\n- FREE_TANK: Return freely (selected when FULL guarantee is not available in FULL_TO_EMPTY)\n- UNKNOWN: Unknown",
+            "example": "FULL_TO_FULL",
+            "title": "fuelPolicy",
+            "type": "string"
+          },
+          "hasGPS": {
+            "description": "Whether vehicle has GPS (same meaning as whether navigation is available)",
+            "example": true,
+            "title": "hasGPS",
+            "type": "boolean"
+          },
+          "insurance": {
+            "$ref": "#/components/schemas/Insurance",
+            "description": "vehicleof insurance policy",
+            "title": "insurance"
+          },
+          "isDistanceUnlimited": {
+            "description": "driving distance limit whether",
+            "example": true,
+            "title": "isDistanceUnlimited",
+            "type": "boolean"
+          },
+          "isNeedFlightNo": {
+            "description": "Deprecated.",
+            "title": "isNeedFlightNo",
+            "type": "boolean"
+          },
+          "isNeedPort": {
+            "description": "Deprecated.",
+            "title": "isNeedPort",
+            "type": "boolean"
+          },
+          "isReleasedInOneYear": {
+            "description": "Whether vehicle was released within 1 year (whether it's a new car)",
+            "example": true,
+            "title": "isReleasedInOneYear",
+            "type": "boolean"
+          },
+          "maxYear": {
+            "description": "Vehicle model year maximum value (empty string = no limit)",
+            "example": "2020",
+            "title": "maxYear",
+            "type": "string"
+          },
+          "minYear": {
+            "description": "Vehicle model year minimum value (empty string = no limit)",
+            "example": "2020",
+            "title": "minYear",
+            "type": "string"
+          },
+          "policies": {
+            "$ref": "#/components/schemas/Policy",
+            "description": "Free text rental regulation information\n<br>\nWhen external API provides regulations as Free Text\nMust be provided according to title, description specifications.",
+            "title": "policies"
+          },
+          "requiredDrivingExperience": {
+            "description": "Minimum years of driving experience required to drive vehicle",
+            "example": 1,
+            "title": "requiredDrivingExperience",
+            "type": "integer"
+          },
+          "reservation": {
+            "description": "Reservation information",
+            "properties": {
+              "cancellationPolicy": {
+                "$ref": "#/components/schemas/CancellationPolicy",
+                "description": "vehicleof cancellation fee regulation",
+                "title": "cancellationPolicy"
+              },
+              "confirmInHours": {
+                "description": "When not an immediate confirmation available vehicle, time required for confirmation (in hours)",
+                "title": "confirmInHours",
+                "type": "number"
+              },
+              "creditCard": {
+                "description": "Card information available during reservation and information about deposit to be imposed",
+                "items": {
+                  "$ref": "#/components/schemas/CreditCard"
+                },
+                "title": "creditCard",
+                "type": "array"
+              },
+              "hasDeposit": {
+                "description": "Whether deposit required",
+                "title": "hasDeposit",
+                "type": "boolean"
+              },
+              "isImmediateConfirmation": {
+                "description": "Whether it's an immediate confirmation available vehicle",
+                "title": "isImmediateConfirmation",
+                "type": "boolean"
+              },
+              "oneWayRental": {
+                "$ref": "#/components/schemas/OneWayRental",
+                "description": "One-way rental amount\n<br>\nInformational object\n- One-way price must always be included in Vehicle Price object.\nExample: If Vehicle Price is 150 and OneWay Price is 50, then vehicle and insurance price is 100, one-way price is 50\n- Vehicle 100 + Oneway 50 = Vehicle Price 150",
+                "title": "oneWayRental"
+              },
+              "price": {
+                "description": "reservation price information",
+                "properties": {
+                  "payOnArrivalPrice": {
+                    "$ref": "#/components/schemas/Price",
+                    "description": "On-site payment amount",
+                    "title": "payOnArrivalPrice"
+                  },
+                  "payablePrice": {
+                    "$ref": "#/components/schemas/Price",
+                    "description": "Advance payment amount",
+                    "title": "payablePrice"
+                  },
+                  "paymentMode": {
+                    "description": "price payment method\n<br>\n∙ 1: on-site payment<br>\n∙ 2: advance payment<br>\n∙ 3: deposit(part) payment",
+                    "title": "paymentMode",
+                    "type": "number"
+                  },
+                  "retailPrice": {
+                    "$ref": "#/components/schemas/Price",
+                    "description": "OTA company sales price\n<br>\n- Informational data provided only by Klook",
+                    "title": "retailPrice"
+                  },
+                  "totalPrice": {
+                    "$ref": "#/components/schemas/Price",
+                    "description": "Total payment amount\n<br>\n∙ totalPrice = payablePrice(advance payment amount) + payOnArrivalPrice(on-site payment amount)",
+                    "title": "totalPrice"
+                  }
+                },
+                "required": [
+                  "payOnArrivalPrice",
+                  "payablePrice",
+                  "paymentMode",
+                  "retailPrice",
+                  "totalPrice"
+                ],
+                "title": "price",
+                "type": "object"
+              },
+              "reservationDescriptions": {
+                "description": "Free text descriptions for payment information\n<br>\nWhen external API provides descriptions for payment information as Free Text\nMust be provided according to title, description specifications.",
+                "items": {
+                  "$ref": "#/components/schemas/Policy"
+                },
+                "title": "reservationDescriptions",
+                "type": "array"
+              }
+            },
+            "required": [
+              "cancellationPolicy",
+              "confirmInHours",
+              "creditCard",
+              "hasDeposit",
+              "isImmediateConfirmation",
+              "oneWayRental",
+              "price",
+              "reservationDescriptions"
+            ],
+            "title": "reservation",
+            "type": "object"
+          }
+        },
+        "required": [
+          "_carId",
+          "_id",
+          "addOns",
+          "agePolicy",
+          "availableShopCombinations",
+          "carGroupTypeId",
+          "distanceLimit",
+          "distanceLimitType",
+          "freeExtraDriverInfo",
+          "fuelPolicy",
+          "hasGPS",
+          "insurance",
+          "isDistanceUnlimited",
+          "isNeedFlightNo",
+          "isNeedPort",
+          "isReleasedInOneYear",
+          "maxYear",
+          "minYear",
+          "policies",
+          "requiredDrivingExperience",
+          "reservation"
+        ],
+        "type": "object"
+      },
+      "Vendor": {
+        "description": "Vendor information\n- For primary API vendor case, only one vendor (API company) exists.\n- For secondary API vendor case, depends on API company.\n- For interface vendor case that only provides API, vendor corresponds to company, shop corresponds to branch.",
+        "example": {
+          "_id": "BG_001",
+          "name": "Budget",
+          "code": "BUG"
+        },
+        "properties": {
+          "_id": {
+            "description": "Unique identifier of the vendor\n- Available: Any value starting with API Identifier + underscore like BG_",
+            "title": "_id",
+            "type": "string"
+          },
+          "code": {
+            "description": "Vendor code provided externally",
+            "title": "code",
+            "type": "string"
+          },
+          "name": {
+            "description": "Vendor name provided externally",
+            "title": "name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "DefaultSchema2": {
+        "description": "Affiliate information",
+        "properties": {
+          "cancellationPolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CancellationPolicy"
+              },
+              {
+                "nullable": true
+              }
+            ],
+            "description": "Affiliate cancellation fee policy information\n<br>\nReturns cancellation fee policy information that may occur at the affiliate level if it exists",
+            "title": "cancellationPolicy"
+          },
+          "contacts": {
+            "description": "Contact information of affiliates or branches provided externally\n<br>\n- Available: N/A",
+            "items": {
+              "type": "string"
+            },
+            "title": "contacts",
+            "type": "array"
+          },
+          "id": {
+            "description": "Unique identifier of the shop\n- Any value starting with API Identifier + underscore like BG_",
+            "title": "id",
+            "type": "string"
+          },
+          "identificationPolicies": {
+            "description": "ID verification regulations for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/IdentificationPolicy"
+            },
+            "title": "identificationPolicies",
+            "type": "array"
+          },
+          "licensePolicies": {
+            "description": "License regulations for companies or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/LicensePolicy"
+            },
+            "title": "licensePolicies",
+            "type": "array"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location",
+            "description": "Detailed location of affiliates or branches provided externally",
+            "title": "location"
+          },
+          "name": {
+            "description": "Name of company or branch provided externally\n<br>\n- Available: N/A",
+            "title": "name",
+            "type": "string"
+          },
+          "operationBreakTimes": {
+            "description": "Break time for companies or branches provided externally (defines idle time in between when production time is divided within a day)",
+            "items": {
+              "$ref": "#/components/schemas/OperationBreakTime"
+            },
+            "title": "operationBreakTimes",
+            "type": "array"
+          },
+          "operationTimes": {
+            "description": "Operating hours of affiliates or branches provided externally\n<br>\n- For APIs with variable operating hours, use \"the most frequently exposed operating hours\"",
+            "items": {
+              "$ref": "#/components/schemas/OperationTime"
+            },
+            "title": "operationTimes",
+            "type": "array"
+          },
+          "pickupGuide": {
+            "description": "Vehicle pickup method at affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/Guide"
+            },
+            "title": "pickupGuide",
+            "type": "array"
+          },
+          "returnGuide": {
+            "description": "Vehicle return method at affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/Guide"
+            },
+            "title": "returnGuide",
+            "type": "array"
+          },
+          "seasonalOperationBreakTimes": {
+            "description": "Break time during specific periods for companies or branches provided externally (defines idle time in between when production time is divided within a day)",
+            "items": {
+              "$ref": "#/components/schemas/SeasonalOperationBreakTime"
+            },
+            "title": "seasonalOperationBreakTimes",
+            "type": "array"
+          },
+          "seasonalOperationTimes": {
+            "description": "Operating hours during specific periods of affiliates or branches provided externally",
+            "items": {
+              "$ref": "#/components/schemas/SeasonalOperationTime"
+            },
+            "title": "seasonalOperationTimes",
+            "type": "array"
+          },
+          "shopGuide": {
+            "description": "General announcements for affiliates or branches provided externally",
+            "title": "shopGuide",
+            "type": "string"
+          },
+          "vendorId": {
+            "description": "Unique identifier of the vendor\n<br>\n- Available: Any value starting with API Identifier + underscore like BG_",
+            "title": "vendorId",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cancellationPolicy",
+          "contacts",
+          "id",
+          "identificationPolicies",
+          "licensePolicies",
+          "location",
+          "name",
+          "operationBreakTimes",
+          "operationTimes",
+          "pickupGuide",
+          "returnGuide",
+          "seasonalOperationBreakTimes",
+          "seasonalOperationTimes",
+          "shopGuide",
+          "vendorId"
+        ],
+        "title": "default_2",
+        "type": "object"
+      },
+      "VehicleListRequest": {
+        "type": "object",
+        "description": "Request Query DTO used for vehicle list Search",
+        "example": {
+          "countryCode": "US",
+          "returnCountryCode": "US",
+          "currency": "USD",
+          "age": 30,
+          "pickupDateTime": "2022-11-22T05:31:45",
+          "returnDateTime": "2022-11-24T05:31:45",
+          "pickupLocationCode": "LAX",
+          "returnLocationCode": "LAX",
+          "pickupLatitude": 127.001,
+          "pickupLongitude": 1.234,
+          "returnLatitude": 127.001,
+          "returnLongitude": 127.001,
+          "searchRadius": 10
+        },
+        "properties": {
+          "countryCode": {
+            "type": "string",
+            "description": "Country Code (ISO 3166-1 alpha-2)",
+            "example": "US"
+          },
+          "returnCountryCode": {
+            "type": "string",
+            "description": "Country Code (ISO 3166-1 alpha-2) - Value used for one-way vehicle search",
+            "example": "US"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency (ISO 4217)",
+            "example": "USD"
+          },
+          "age": {
+            "type": "integer",
+            "description": "Driver age",
+            "example": 30
+          },
+          "pickupDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Local vehicle rental time (Format: YYYY-MM-DDTHH:mm:ss)",
+            "example": "2022-11-22T05:31:45"
+          },
+          "returnDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Local return time (Format: YYYY-MM-DDTHH:mm:ss)",
+            "example": "2022-11-24T05:31:45"
+          },
+          "pickupLocationCode": {
+            "type": "string",
+            "nullable": true,
+            "description": "Airport Location Code (airport IATA code, omitted if not provided)",
+            "example": "LAX"
+          },
+          "returnLocationCode": {
+            "type": "string",
+            "nullable": true,
+            "description": "Airport Location Code (airport IATA code, omitted if not provided)",
+            "example": "LAX"
+          },
+          "pickupLatitude": {
+            "type": "number",
+            "format": "float",
+            "description": "Latitude coordinate for desired rental location during vehicle search",
+            "example": 127.001
+          },
+          "pickupLongitude": {
+            "type": "number",
+            "format": "float",
+            "description": "Longitude coordinate for desired rental location during vehicle search",
+            "example": 1.234
+          },
+          "returnLatitude": {
+            "type": "number",
+            "format": "float",
+            "description": "Latitude coordinate for desired return location during vehicle search - This value is always different for one-way vehicle search",
+            "example": 127.001
+          },
+          "returnLongitude": {
+            "type": "number",
+            "format": "float",
+            "description": "Longitude coordinate for desired return location during vehicle search - This value is always different for one-way vehicle search",
+            "example": 127.001
+          },
+          "searchRadius": {
+            "type": "number",
+            "nullable": true,
+            "description": "Search radius for vehicle search (km) - Value for searching within N km radius during vehicle search",
+            "example": 10,
+            "default": 10
+          }
+        },
+        "required": [
+          "countryCode",
+          "returnCountryCode",
+          "currency",
+          "age",
+          "pickupDateTime",
+          "returnDateTime",
+          "pickupLatitude",
+          "pickupLongitude",
+          "returnLatitude",
+          "returnLongitude"
+        ]
+      },
+      "CommonResponse": {
+        "type": "object",
+        "description": "Common response schema",
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "description": "HTTP Status Code",
+            "example": 200
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "response at the timeof time - format YYYY-MM-DDTHH:mm:ss.000Z",
+            "example": "2022-10-05T14:48:00.000Z"
+          },
+          "path": {
+            "type": "string",
+            "description": "Request URL",
+            "example": "https://..../...."
+          },
+          "trackingId": {
+            "type": "string",
+            "nullable": true,
+            "description": "UUID.v4 format String for API request tracking (omitted if not provided)",
+            "example": "UUID.v4"
+          },
+          "ok": {
+            "type": "boolean",
+            "description": "Whether request was successful or failed",
+            "example": true
+          }
+        },
+        "required": [
+          "statusCode",
+          "timestamp",
+          "path",
+          "ok"
+        ]
+      },
+      "VehicleListResponse": {
+        "type": "object",
+        "description": "Response DTO used when getting vehicle list",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "cars": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Car"
+                    },
+                    "description": "Car Model"
+                  },
+                  "vehicles": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Vehicle"
+                    },
+                    "description": "vehicle (insurance included)"
+                  },
+                  "vendors": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Vendor"
+                    },
+                    "description": "company or branch"
+                  },
+                  "shops": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Shop"
+                    },
+                    "description": "company or branch"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "VehicleDetailResponse": {
+        "type": "object",
+        "description": "Vehicle Detail Search response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Vehicle",
+                "description": "vehicle detailed information"
+              }
+            }
+          }
+        ]
+      },
+      "OrderCreateResponse": {
+        "type": "object",
+        "description": "Reservation Creation response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Order",
+                "description": "creation Reservation information"
+              }
+            }
+          }
+        ]
+      },
+      "AsyncOrderCreateResponse": {
+        "type": "object",
+        "description": "Asynchronous Reservation Creation response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "orderId": {
+                    "type": "string",
+                    "description": "creation reservation ID"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "processing"
+                    ],
+                    "description": "reservation processing status"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "OrderDetailResponse": {
+        "type": "object",
+        "description": "Reservation Detail Search response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Order",
+                "description": "reservation detailed information"
+              }
+            }
+          }
+        ]
+      },
+      "OrderCancelResponse": {
+        "type": "object",
+        "description": "Reservation Cancellation response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "orderId": {
+                    "type": "string",
+                    "description": "cancellation reservation ID"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "cancelled"
+                    ],
+                    "description": "reservation status"
+                  },
+                  "cancelledAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "cancellation time"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetAffiliatesResponse": {
+        "type": "object",
+        "description": "Get affiliate list response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Affiliate"
+                },
+                "description": "Partner list"
+              }
+            }
+          }
+        ]
+      },
+      "GetAffiliateResponse": {
+        "type": "object",
+        "description": "Partner detailed Search response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Affiliate",
+                "description": "Partner detailed information"
+              }
+            }
+          }
+        ]
+      },
+      "GetCarsResponse": {
+        "type": "object",
+        "description": "Get car model list response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Car"
+                },
+                "description": "Car Model list"
+              }
+            }
+          }
+        ]
+      },
+      "GetCarResponse": {
+        "type": "object",
+        "description": "Car Model detailed Search response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Car",
+                "description": "Car Model detailed information"
+              }
+            }
+          }
+        ]
+      },
+      "GetReservationsResponse": {
+        "type": "object",
+        "description": "Reservation List Search response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Reservation"
+                },
+                "description": "Reservation list"
+              }
+            }
+          }
+        ]
+      },
+      "OrderCreateRequestBody": {
+        "type": "object",
+        "description": "Reservation Creation request body",
+        "example": {
+          "_id": "BG1231312",
+          "id": "BG_QA_12",
+          "pickupShopId": "KL_12",
+          "returnShopId": "KL_12",
+          "currency": "USD",
+          "carmoreOrderId": "BG1231312",
+          "countryCode": "US",
+          "returnCountryCode": "US",
+          "pickupDateTime": "2022-11-22T05:31:45",
+          "returnDateTime": "2022-11-24T05:31:45",
+          "driverPhone": "+8201012345678",
+          "driverEmail": "dev@teamo2.kr",
+          "flightNo": "KE111",
+          "driverFirstName": "오투",
+          "driverLastName": "팀",
+          "driverGender": "M",
+          "driverAge": 30,
+          "adult": 1,
+          "child": 1,
+          "infant": 1,
+          "pickupLatitude": 127.001,
+          "pickupLongitude": 1.234,
+          "returnLatitude": 127.001,
+          "returnLongitude": 127.001,
+          "addOns": [
+            {
+              "id": "addon_123",
+              "selectableOptions": [
+                {
+                  "value": "option_value"
+                }
+              ],
+              "count": 1
+            }
+          ]
+        },
+        "properties": {
+          "_id": {
+            "type": "string",
+            "description": "Unique number of reservation case identified in carmore-common-api",
+            "example": "BG1231312"
+          },
+          "id": {
+            "type": "string",
+            "description": "ID of vehicle to be reserved",
+            "example": "BG_QA_12"
+          },
+          "pickupShopId": {
+            "type": "string",
+            "description": "Rental company of the vehicle to be reserved",
+            "example": "KL_12"
+          },
+          "returnShopId": {
+            "type": "string",
+            "description": "Return company of the vehicle to be reserved",
+            "example": "KL_12"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency (ISO 4217)",
+            "example": "USD"
+          },
+          "carmoreOrderId": {
+            "type": "string",
+            "description": "Unique number of reservation case identified in carmore-common-api",
+            "example": "BG1231312"
+          },
+          "countryCode": {
+            "type": "string",
+            "description": "Country code ISO 3166-1 alpha-2",
+            "example": "US"
+          },
+          "returnCountryCode": {
+            "type": "string",
+            "description": "Country code ISO 3166-1 alpha-2",
+            "example": "US"
+          },
+          "pickupDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Local vehicle rental time",
+            "example": "2022-11-22T05:31:45"
+          },
+          "returnDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Local return time",
+            "example": "2022-11-24T05:31:45"
+          },
+          "driverPhone": {
+            "type": "string",
+            "description": "reservationholderof international phone number included mobile phone number",
+            "example": "+8201012345678"
+          },
+          "driverEmail": {
+            "type": "string",
+            "format": "email",
+            "description": "reservationholderof email",
+            "example": "dev@teamo2.kr"
+          },
+          "driverFirstName": {
+            "type": "string",
+            "description": "reservationholder name",
+            "example": "John"
+          },
+          "driverLastName": {
+            "type": "string",
+            "description": "reservationholder surname",
+            "example": "Smith"
+          },
+          "pickupLatitude": {
+            "type": "number",
+            "format": "float",
+            "description": "Latitude coordinate for desired rental location during vehicle search",
+            "example": 127.001
+          },
+          "pickupLongitude": {
+            "type": "number",
+            "format": "float",
+            "description": "Longitude coordinate for desired rental location during vehicle search",
+            "example": 1.234
+          },
+          "returnLatitude": {
+            "type": "number",
+            "format": "float",
+            "description": "Latitude coordinate for desired return location during vehicle search",
+            "example": 127.001
+          },
+          "returnLongitude": {
+            "type": "number",
+            "format": "float",
+            "description": "Longitude coordinate for desired return location during vehicle search",
+            "example": 127.001
+          }
+        },
+        "required": [
+          "_id",
+          "id",
+          "pickupShopId",
+          "returnShopId",
+          "currency",
+          "carmoreOrderId",
+          "countryCode",
+          "returnCountryCode",
+          "pickupDateTime",
+          "returnDateTime",
+          "driverPhone",
+          "driverEmail",
+          "driverFirstName",
+          "driverLastName",
+          "pickupLatitude",
+          "pickupLongitude",
+          "returnLatitude",
+          "returnLongitude"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API authentication key"
+      }
+    }
+  },
+  "paths": {
+    "/vehicles": {
+      "post": {
+        "summary": "Get vehicle list",
+        "description": "Retrieve a list of vehicles available at specified locations and times. Search for reservable vehicles based on rental/return locations, dates/times, driver information, etc.",
+        "operationId": "getVehicles",
+        "tags": [
+          "Vehicles"
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Vehicle search criteria",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleListRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved vehicle list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - required/mandatory parameter missing or wrong format",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vehicles/{vehicleId}": {
+      "get": {
+        "summary": "Vehicle Detail Search",
+        "description": "Retrieves detailed information for a specific vehicle. Includes vehicle specifications, insurance, price, rental conditions, and other detailed information.",
+        "operationId": "getVehicleDetail",
+        "tags": [
+          "Vehicles"
+        ],
+        "parameters": [
+          {
+            "name": "vehicleId",
+            "in": "path",
+            "required": true,
+            "description": "Unique ID of the vehicle to be retrieved",
+            "schema": {
+              "type": "string",
+              "example": "BG_VEHICLE_123"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vehicle detailed information retrieval successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Vehicle not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders": {
+      "post": {
+        "summary": "Reservation Creation (Synchronous)",
+        "description": "Creates a new vehicle reservation. Returns immediate reservation confirmation result.",
+        "operationId": "createOrder",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Reservation Creation required information",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCreateRequestBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reservation successfully created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCreateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - required/mandatory information missing or invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Reservation conflict - the vehicle is not available for reservation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/async": {
+      "post": {
+        "summary": "Reservation Creation (Asynchronous)",
+        "description": "Creates a new vehicle reservation asynchronously. Returns processing status after receiving the reservation request, and actual reservation confirmation requires separate verification.",
+        "operationId": "createAsyncOrder",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Reservation Creation required information",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCreateRequestBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Reservation request received and processing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncOrderCreateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}": {
+      "get": {
+        "summary": "Reservation Detail Search",
+        "description": "Retrieves detailed information for a specific reservation. Includes reservation status, vehicle information, payment information, etc.",
+        "operationId": "getOrderDetail",
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "description": "Unique ID of the reservation to be retrieved",
+            "schema": {
+              "type": "string",
+              "example": "BG1231312"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reservation information retrieval successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reservation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Reservation Cancellation",
+        "description": "Cancels an existing reservation. Cancellation fees may apply according to the cancellation policy.",
+        "operationId": "cancelOrder",
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "description": "Unique ID of the reservation to be cancelled",
+            "schema": {
+              "type": "string",
+              "example": "BG1231312"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reservation successfully cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCancelResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reservation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Cancellation unavailable reservation - not started yet or already cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/affiliates": {
+      "get": {
+        "summary": "Get affiliate list",
+        "description": "Retrieves list of all registered partners.",
+        "operationId": "getAffiliates",
+        "tags": [
+          "Affiliates"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number (starting from 1)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Number of items per page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get affiliate list success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetAffiliatesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/affiliates/{affiliateId}": {
+      "get": {
+        "summary": "Get Partner Details",
+        "description": "Retrieves detailed information for a specific partner.",
+        "operationId": "getAffiliate",
+        "tags": [
+          "Affiliates"
+        ],
+        "parameters": [
+          {
+            "name": "affiliateId",
+            "in": "path",
+            "required": true,
+            "description": "Unique ID of the partner to be retrieved",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Partner information retrieval successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetAffiliateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Partner not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cars": {
+      "get": {
+        "summary": "Get car model list",
+        "description": "Retrieves list of registered car models. Can filter by brand, model, car model group, etc.",
+        "operationId": "getCars",
+        "tags": [
+          "Cars"
+        ],
+        "parameters": [
+          {
+            "name": "brand",
+            "in": "query",
+            "description": "Filter by vehicle brand (e.g.: KIA, HYUNDAI)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "carGroupTypeId",
+            "in": "query",
+            "description": "Filter by car model group ID (0:Compact, 1:Subcompact, 2:Mid-size, 3:Full-size, 4:Large, 6:RV, 7:SUV)",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                -1
+              ]
+            }
+          },
+          {
+            "name": "seats",
+            "in": "query",
+            "description": "Filter by number of seats",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get car model list success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetCarsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cars/{carId}": {
+      "get": {
+        "summary": "Get Car Model Details",
+        "description": "Retrieves detailed information for a specific car model.",
+        "operationId": "getCar",
+        "tags": [
+          "Cars"
+        ],
+        "parameters": [
+          {
+            "name": "carId",
+            "in": "path",
+            "required": true,
+            "description": "Unique ID of the car model to be retrieved",
+            "schema": {
+              "type": "string",
+              "example": "BG_QA_12"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Car model information retrieval successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetCarResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Car model not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shops": {
+      "get": {
+        "summary": "Get shop list",
+        "description": "Retrieves list of branches available for vehicle rental and return.",
+        "operationId": "getShops",
+        "tags": [
+          "Shops"
+        ],
+        "parameters": [
+          {
+            "name": "latitude",
+            "in": "query",
+            "description": "Search based on Latitude",
+            "schema": {
+              "type": "number",
+              "format": "float",
+              "example": 37.5665
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "description": "Search based on Longitude",
+            "schema": {
+              "type": "number",
+              "format": "float",
+              "example": 126.978
+            }
+          },
+          {
+            "name": "radius",
+            "in": "query",
+            "description": "Search radius (km)",
+            "schema": {
+              "type": "number",
+              "format": "float",
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get shop list success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CommonResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "result": {
+                          "type": "object",
+                          "properties": {
+                            "shops": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/Shop"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ]
+}

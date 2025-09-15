@@ -1,0 +1,173 @@
+{
+  "title": "User",
+  "type": "object",
+  "required": ["id", "orders"],
+  "properties": {
+    "profile": {
+      "$ref": "#/$defs/Profile",
+      "description": "사용자 프로필"
+    },
+    "settings": {
+      "$ref": "#/$defs/Settings",
+      "description": "설정"
+    },
+    "orders": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Order"
+      },
+      "description": "주문 목록"
+    },
+    "id": {
+      "type": "string",
+      "description": "식별자"
+    },
+    "object1ㄹ": {
+      "properties": {},
+      "description": "ㅁㄴㅇㄹㅁㅇㄹㅁㅇㄴㄹㅁㅇㄴㄹㅁㅇㄴㄹ",
+      "$ref": "#/$defs/Obㅁㅇㄹㅁㅇㄴㄹject1ㄹ"
+    }
+  },
+  "$defs": {
+    "Profile": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["admin", "user", "guest"],
+          "description": "역할"
+        },
+        "name": {
+          "type": "string",
+          "description": "이름"
+        },
+        "contact": {
+          "$ref": "#/$defs/Contact",
+          "description": "연락처 정보"
+        },
+        "age": {
+          "type": "integer",
+          "description": "나이"
+        }
+      }
+    },
+    "Contact": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "이메일"
+        },
+        "phone": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "description": "전화번호"
+        }
+      }
+    },
+    "Settings": {
+      "type": "object",
+      "properties": {
+        "theme": {
+          "type": "string",
+          "description": "테마 이름"
+        },
+        "preferences": {
+          "$ref": "#/$defs/Preferences",
+          "description": "사용자 선호"
+        }
+      }
+    },
+    "Preferences": {
+      "type": "object",
+      "properties": {
+        "notifications": {
+          "type": "boolean",
+          "description": "알림 사용"
+        },
+        "language": {
+          "type": "string",
+          "description": "언어"
+        }
+      }
+    },
+    "Order": {
+      "type": "object",
+      "required": ["orderId", "items"],
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "description": "주문 ID"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Item"
+          },
+          "description": "주문 품목"
+        }
+      }
+    },
+    "Item": {
+      "type": "object",
+      "required": ["sku", "qty"],
+      "properties": {
+        "sku": {
+          "type": "string",
+          "description": "상품 코드"
+        },
+        "qty": {
+          "type": "integer",
+          "description": "수량"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "enum": ["hot", "new", "sale"]
+          },
+          "description": "태그"
+        },
+        "dimensions": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "W,H,D (tuple)"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta",
+          "description": "추가 정보"
+        }
+      }
+    },
+    "Meta": {
+      "type": "object",
+      "properties": {
+        "color": {
+          "type": "string",
+          "enum": ["red", "green", "blue"],
+          "description": "색상"
+        },
+        "notes": {
+          "type": "string",
+          "description": "메모"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.orig
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Node / Vite artifacts
+node_modules/
+dist/
+.vite/
+.cache/
+coverage/
+*.tsbuildinfo
+
+# Python cache (for local HTTP server usage)
+__pycache__/
+*.py[cod]
+
+# Specific app outputs
+schema-viewer-react/dist/
+schema-viewer-react/node_modules/
+schema-viewer-react/.vite/
+schema-viewer-react/coverage/

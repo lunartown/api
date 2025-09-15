@@ -40,3 +40,5 @@ schema-viewer-react/dist/
 schema-viewer-react/node_modules/
 schema-viewer-react/.vite/
 schema-viewer-react/coverage/
+schema-viewer-react/public/verify-status.json
+schema-viewer-react/test-results/.playwright-artifacts-*/

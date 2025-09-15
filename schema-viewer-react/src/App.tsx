@@ -42,6 +42,7 @@ export default function App() {
   const [toolbarOpen, setToolbarOpen] = useState<boolean>(true)
   const pendingBatchRef = React.useRef<boolean>(false)
   const batchTimerRef = React.useRef<any>(null)
+  const [verifyStatus, setVerifyStatus] = useState<any | null>(null)
 
   const beginBatchIfNeeded = () => {
     if (!pendingBatchRef.current) {
@@ -64,6 +65,70 @@ export default function App() {
       alert('JSON 파싱 오류: ' + e.message)
     }
   }
+
+  const runSelfCheck = async () => {
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
+    const qRow = (p: string, f: string) => document.querySelector(`tbody tr.row.collapsible[data-parent="${p}"][data-field="${f}"]`) as HTMLTableRowElement | null
+    const qInst = (id: string) => Array.from(document.querySelectorAll('.subtable')).find((e) => (e as HTMLElement).dataset.instance === id) as HTMLElement | undefined
+    const clickDisclosure = (row: HTMLTableRowElement | null) => row?.querySelector('button.disclosure')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const top = (el?: Element | null) => el ? (el as HTMLElement).getBoundingClientRect().top : null
+    const bottom = (el?: Element | null) => el ? (el as HTMLElement).getBoundingClientRect().bottom : null
+
+    try {
+      // ensure in view mode
+      if (mode !== 'view') {
+        handleRender()
+        await nextFrame()
+        await wait(50)
+      }
+
+      // Expand User.profile
+      clickDisclosure(qRow('User', 'profile'))
+      await nextFrame(); await wait(50)
+      // Expand Profile.contact
+      clickDisclosure(qRow('Profile', 'contact'))
+      await nextFrame(); await wait(50)
+      // Expand User.settings
+      clickDisclosure(qRow('User', 'settings'))
+      await nextFrame(); await wait(50)
+
+      const instContact = qInst('User.profile.contact')
+      const instSettings = qInst('User.settings')
+      const contactBottom = bottom(instContact)
+      const settingsTop = top(instSettings)
+      const stackingOK = (contactBottom != null && settingsTop != null) ? (settingsTop > contactBottom + 1) : false
+
+      // Collapse User.profile and confirm descendants disappear
+      clickDisclosure(qRow('User', 'profile'))
+      await nextFrame(); await wait(50)
+      const descendants = Array.from(document.querySelectorAll('.subtable')).filter((e) => (e as HTMLElement).dataset.instance?.startsWith('User.profile'))
+      const collapseOK = descendants.length === 0
+
+      const summary = `SelfCheck\nstackingOK: ${stackingOK}\ncollapseOK: ${collapseOK}\ncontactBottom: ${contactBottom}\nsettingsTop: ${settingsTop}`
+      console.log('[SelfCheck]', { stackingOK, collapseOK, contactBottom, settingsTop })
+      alert(summary)
+    } catch (err: any) {
+      console.error('[SelfCheck] error', err)
+      alert('SelfCheck error: ' + (err?.message || String(err)))
+    }
+  }
+
+  React.useEffect(() => {
+    let stop = false
+    const tick = async () => {
+      try {
+        const res = await fetch('/verify-status.json', { cache: 'no-store' })
+        if (res.ok) {
+          const json = await res.json()
+          if (!stop) setVerifyStatus(json)
+        }
+      } catch {}
+      if (!stop) setTimeout(tick, 3000)
+    }
+    tick()
+    return () => { stop = true }
+  }, [])
 
   return (
     <main className="container">
@@ -116,12 +181,19 @@ export default function App() {
                 navigator.clipboard?.writeText(text)
                 alert('JSON Schema가 클립보드에 복사되었습니다.')
               }}>Export 복사</button>
+              <button onClick={() => runSelfCheck()}>Self Check</button>
               <button onClick={() => {
                 const next = !debug
                 setDebug(next)
                 try { localStorage.setItem('layoutDebug', next ? '1' : '0') } catch {}
                 alert('Layout debug ' + (next ? 'ON' : 'OFF'))
               }}>Debug {debug ? 'ON' : 'OFF'}</button>
+              {verifyStatus && (
+                <span className="small" style={{ paddingLeft: 8 }}>
+                  Verify: {verifyStatus.ok ? 'PASS' : 'FAIL'}
+                  {verifyStatus.tests ? ` (${verifyStatus.tests.passed}/${verifyStatus.tests.total})` : ''}
+                </span>
+              )}
             </div>
           </div>
           <Canvas scrollable initialScale={1}>

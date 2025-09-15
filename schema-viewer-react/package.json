@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "verify": "npm run build && playwright test",
+    "verify:loop": "node dev/verify-loop.mjs",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report"
   },
